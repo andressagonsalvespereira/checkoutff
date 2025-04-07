@@ -43,10 +43,20 @@ const handler: Handler = async (event) => {
 
     console.log('Status do pagamento atualizado com sucesso para PAID');
 
-    return { statusCode: 200, body: JSON.stringify({ message: 'Pagamento processado com sucesso.' }) };
+    // Enviar uma resposta de sucesso
+    return { 
+      statusCode: 200, 
+      body: JSON.stringify({ 
+        message: 'Pagamento processado com sucesso.', 
+        redirect: '/payment-success' // Adicionando o redirecionamento para o frontend
+      }) 
+    };
   } catch (err) {
     console.error('Erro ao processar requisição:', err);
-    return { statusCode: 500, body: JSON.stringify({ error: 'Erro interno ao processar o webhook', details: err.message }) };
+    return { 
+      statusCode: 500, 
+      body: JSON.stringify({ error: 'Erro interno ao processar o webhook', details: err.message }) 
+    };
   }
 };
 
