@@ -1,90 +1,52 @@
+// netlify/functions/asaas-webhook.ts
 import { Handler } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
 
-// Supabase config
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 const handler: Handler = async (event) => {
-  console.log('🔔 Webhook recebido - Método:', event.httpMethod);
+  console.log('Requisição recebida:', { method: event.httpMethod, body: event.body });
 
   if (event.httpMethod !== 'POST') {
-    return {
-      statusCode: 405,
-      body: 'Método não permitido. Use POST.',
-    };
+    return { statusCode: 405, body: JSON.stringify({ error: 'Método não permitido. Use POST.' }) };
+  }
+
+  if (!event.body) {
+    return { statusCode: 400, body: JSON.stringify({ error: 'Corpo da requisição vazio.' }) };
   }
 
   try {
-    const payload = JSON.parse(event.body || '{}');
-    console.log('📦 Payload do webhook:', payload);
+    const body = JSON.parse(event.body);
 
-    const eventName = payload.event;
-    const payment = payload.payment;
-
-    if (!payment || !payment.id || !payment.status) {
-      console.warn('⚠️ Webhook sem ID ou status de pagamento.');
-      return {
-        statusCode: 200,
-        body: JSON.stringify({ message: 'Ignorado: dados incompletos.' }),
-      };
+    // Verificar se o evento é o esperado
+    if (body.event !== 'PAYMENT_CREATED') {
+      return { statusCode: 400, body: JSON.stringify({ message: 'Evento não reconhecido.' }) };
     }
 
-    if (eventName !== 'PAYMENT_CONFIRMED') {
-      console.info('ℹ️ Evento ignorado:', eventName);
-      return {
-        statusCode: 200,
-        body: JSON.stringify({ message: `Evento ${eventName} ignorado.` }),
-      };
-    }
+    console.log('Evento de pagamento criado recebido:', body);
 
-    const paymentId = payment.id;
-    const paymentStatus = payment.status;
+    const { payment } = body;
 
-    console.log('🔍 Buscando pedido com asaas_payment_id:', paymentId);
-
-    const { data: order, error: fetchError } = await supabase
+    // Atualizar o status de pagamento no Supabase
+    const { data, error } = await supabase
       .from('orders')
-      .select('*')
-      .eq('asaas_payment_id', paymentId)
-      .single();
+      .update({ status: 'PAID' })
+      .eq('asaas_payment_id', payment.id);
 
-    if (fetchError || !order) {
-      console.error('❌ Pedido não encontrado:', fetchError);
-      return {
-        statusCode: 404,
-        body: 'Pedido não encontrado.',
-      };
+    if (error) {
+      console.error('Erro ao atualizar status de pagamento:', error);
+      return { statusCode: 500, body: JSON.stringify({ error: 'Erro ao atualizar status no Supabase' }) };
     }
 
-    console.log(`📝 Atualizando pedido ${order.id} para status: ${paymentStatus}`);
+    console.log('Status do pagamento atualizado com sucesso para PAID');
 
-    const { error: updateError } = await supabase
-      .from('orders')
-      .update({ status: paymentStatus })
-      .eq('id', order.id);
-
-    if (updateError) {
-      console.error('❌ Erro ao atualizar pedido:', updateError);
-      return {
-        statusCode: 500,
-        body: 'Erro ao atualizar o status do pedido.',
-      };
-    }
-
-    console.log('✅ Pedido atualizado com sucesso!');
-    return {
-      statusCode: 200,
-      body: JSON.stringify({ success: true }),
-    };
-  } catch (err: any) {
-    console.error('❌ Erro ao processar webhook:', err);
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ error: 'Erro interno', details: err.message }),
-    };
+    return { statusCode: 200, body: JSON.stringify({ message: 'Pagamento processado com sucesso.' }) };
+  } catch (err) {
+    console.error('Erro ao processar requisição:', err);
+    return { statusCode: 500, body: JSON.stringify({ error: 'Erro interno ao processar o webhook', details: err.message }) };
   }
 };
 
