@@ -106,8 +106,7 @@ export const createOrder = async (orderData: CreateOrderInput): Promise<Order> =
       product_name: orderData.productName,
       price: orderData.productPrice,
       payment_method: orderData.paymentMethod,
-      status: safeStatus, // Adicionado para atender à restrição orders_status_check
-      payment_status: safeStatus, // Mantido para o webhook
+      payment_status: safeStatus, // Usar apenas payment_status, já que a coluna status não existe
       payment_id: orderData.paymentId || null,
       qr_code: orderData.pixDetails?.qrCode || null,
       qr_code_image: orderData.pixDetails?.qrCodeImage || null,
