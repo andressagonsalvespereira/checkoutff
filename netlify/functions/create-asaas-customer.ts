@@ -6,7 +6,7 @@ const ASAAS_API_URL_PAYMENTS = 'https://sandbox.asaas.com/api/v3/payments';
 
 const handler: Handler = async (event) => {
   console.log('Requisição recebida:', { method: event.httpMethod, body: event.body });
-  console.log('Versão atualizada para criar pagamento PIX - 2025-04-06');
+  console.log('Versão atualizada para criar pagamento PIX - 2025-04-07');
 
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: JSON.stringify({ error: 'Método não permitido. Use POST.' }) };
@@ -19,23 +19,31 @@ const handler: Handler = async (event) => {
   try {
     let body;
     try {
-      console.log('Tentando parsear body:', event.body);
       body = JSON.parse(event.body);
     } catch (parseErr) {
-      console.error('Erro ao parsear body:', parseErr.message, 'Body recebido:', event.body);
-      return { statusCode: 400, body: JSON.stringify({ error: 'Corpo da requisição não é JSON válido', details: parseErr.message }) };
+      console.error('Erro ao parsear body:', parseErr.message);
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ error: 'Corpo da requisição não é JSON válido', details: parseErr.message }),
+      };
     }
 
-    console.log('Dados parseados do frontend:', body);
-
-    const { customer_name: name, customer_email: email, customer_cpf: cpfCnpj, customer_phone: phone } = body;
-    const { price = 19.9, payment_method = 'PIX', product_name = 'Assinatura Anual - CineFlick Card' } = body;
+    const {
+      customer_name: name,
+      customer_email: email,
+      customer_cpf: cpfCnpj,
+      customer_phone: phone,
+      price = 19.9,
+      payment_method = 'PIX',
+      product_name = 'Assinatura Anual - CineFlick Card',
+    } = body;
 
     if (!name || !email || !cpfCnpj) {
       return { statusCode: 400, body: JSON.stringify({ error: 'Nome, email e CPF/CNPJ são obrigatórios.' }) };
     }
 
     const apiKey = process.env.ASAAS_API_KEY;
+    console.log('🔐 API KEY capturada:', apiKey);
     if (!apiKey) {
       return { statusCode: 500, body: JSON.stringify({ error: 'API key não configurada.' }) };
     }
@@ -51,7 +59,7 @@ const handler: Handler = async (event) => {
       cpfCnpj: cleanCpfCnpj,
       mobilePhone: phone ? phone.replace(/[^\d]/g, '') : undefined,
     };
-    console.log('Dados enviados ao Asaas para criar cliente:', asaasCustomerData);
+    console.log('📤 Enviando dados do cliente:', asaasCustomerData);
 
     const customerResponse = await fetch(ASAAS_API_URL_CUSTOMERS, {
       method: 'POST',
@@ -62,11 +70,28 @@ const handler: Handler = async (event) => {
       body: JSON.stringify(asaasCustomerData),
     });
 
-    const customerData = await customerResponse.json();
-    console.log('Resposta do Asaas (cliente):', customerData);
+    let customerData: any = {};
+    const customerRaw = await customerResponse.text();
+    console.log('👤 Resposta crua do Asaas (cliente):', customerRaw.length > 500 ? customerRaw.slice(0, 500) + '...' : customerRaw);
+
+    try {
+      customerData = JSON.parse(customerRaw);
+    } catch (err) {
+      console.error('❌ Erro ao fazer JSON.parse da resposta de cliente:', err);
+      return {
+        statusCode: 500,
+        body: JSON.stringify({
+          error: 'Resposta do cliente não é JSON válido',
+          raw: customerRaw,
+        }),
+      };
+    }
 
     if (!customerResponse.ok) {
-      return { statusCode: customerResponse.status, body: JSON.stringify({ error: 'Erro ao criar cliente no Asaas', details: customerData }) };
+      return {
+        statusCode: customerResponse.status,
+        body: JSON.stringify({ error: 'Erro ao criar cliente no Asaas', details: customerData }),
+      };
     }
 
     const asaasPaymentData = {
@@ -76,7 +101,7 @@ const handler: Handler = async (event) => {
       dueDate: new Date().toISOString().split('T')[0],
       description: product_name,
     };
-    console.log('Dados enviados ao Asaas para criar pagamento:', asaasPaymentData);
+    console.log('📤 Enviando dados do pagamento:', asaasPaymentData);
 
     const paymentResponse = await fetch(ASAAS_API_URL_PAYMENTS, {
       method: 'POST',
@@ -87,45 +112,79 @@ const handler: Handler = async (event) => {
       body: JSON.stringify(asaasPaymentData),
     });
 
-    const paymentData = await paymentResponse.json();
-    console.log('Resposta do Asaas (pagamento):', paymentData);
+    let paymentData: any = {};
+    const paymentRaw = await paymentResponse.text();
+    console.log('📦 Resposta crua do Asaas (pagamento):', paymentRaw.length > 500 ? paymentRaw.slice(0, 500) + '...' : paymentRaw);
 
-    if (!paymentResponse.ok) {
-      return { statusCode: paymentResponse.status, body: JSON.stringify({ error: 'Erro ao criar pagamento no Asaas', details: paymentData }) };
+    try {
+      paymentData = JSON.parse(paymentRaw);
+    } catch (err) {
+      console.error('❌ Erro ao fazer JSON.parse da resposta de pagamento:', err);
+      return {
+        statusCode: 500,
+        body: JSON.stringify({
+          error: 'Resposta de pagamento não é JSON válido',
+          raw: paymentRaw,
+        }),
+      };
     }
 
-    // Fazer uma requisição adicional para obter o QR code
-    let qrCodeData = { payload: "QR_CODE_NOT_AVAILABLE", qrCodeImage: "" };
-    if (paymentData.id) {
-      const qrCodeResponse = await fetch(`${ASAAS_API_URL_PAYMENTS}/${paymentData.id}/pixQrCode`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'access_token': apiKey,
-        },
-      });
+    if (!paymentResponse.ok) {
+      return {
+        statusCode: paymentResponse.status,
+        body: JSON.stringify({ error: 'Erro ao criar pagamento no Asaas', details: paymentData }),
+      };
+    }
 
-      if (qrCodeResponse.ok) {
-        qrCodeData = await qrCodeResponse.json();
-        console.log('PIX QR Code data:', qrCodeData);
-      } else {
-        console.warn('Failed to fetch PIX QR Code, using fallback values');
+    let qrCodeData = { payload: 'QR_CODE_NOT_AVAILABLE', qrCodeImage: '' };
+    if (paymentData.id) {
+      try {
+        const qrCodeResponse = await fetch(`${ASAAS_API_URL_PAYMENTS}/${paymentData.id}/pixQrCode`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'access_token': apiKey,
+          },
+        });
+
+        if (qrCodeResponse.ok) {
+          const raw = await qrCodeResponse.text();
+          console.log('🔍 Resposta crua do QR Code (length):', raw.length);
+
+          if (raw.trim().length === 0) {
+            console.warn('⚠️ Resposta do QR Code completamente vazia.');
+          } else {
+            try {
+              qrCodeData = JSON.parse(raw);
+              console.log('✅ QR Code data:', qrCodeData);
+            } catch (e) {
+              console.warn('❌ Falha ao fazer JSON.parse do QR Code:', e.message);
+              console.warn('Conteúdo recebido para parse do QR Code:', raw);
+            }
+          }
+        } else {
+          console.warn('❌ QR Code request falhou:', qrCodeResponse.status, qrCodeResponse.statusText);
+        }
+      } catch (err) {
+        console.error('❌ Erro inesperado ao buscar o QR Code:', err);
       }
     }
 
-    // Adicionar os dados do QR code à resposta
     const responseWithQrCode = {
       ...paymentData,
       pix: {
-        payload: qrCodeData.payload || "QR_CODE_NOT_AVAILABLE",
-        qrCodeImage: qrCodeData.qrCodeImage || "",
+        payload: qrCodeData.payload || 'QR_CODE_NOT_AVAILABLE',
+        qrCodeImage: qrCodeData.qrCodeImage || '',
       },
     };
 
     return { statusCode: 200, body: JSON.stringify(responseWithQrCode) };
   } catch (err) {
     console.error('Erro ao processar requisição:', err);
-    return { statusCode: 500, body: JSON.stringify({ error: 'Erro interno ao criar pagamento', details: err.message }) };
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ error: 'Erro interno ao criar pagamento', details: err.message }),
+    };
   }
 };
 

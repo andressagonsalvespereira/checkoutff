@@ -106,7 +106,7 @@ export const createOrder = async (orderData: CreateOrderInput): Promise<Order> =
       product_name: orderData.productName,
       price: orderData.productPrice,
       payment_method: orderData.paymentMethod,
-      status: safeStatus,
+      payment_status: safeStatus, // Alterado de "status" para "payment_status"
       payment_id: orderData.paymentId || null,
       qr_code: orderData.pixDetails?.qrCode || null,
       qr_code_image: orderData.pixDetails?.qrCodeImage || null,
@@ -117,7 +117,7 @@ export const createOrder = async (orderData: CreateOrderInput): Promise<Order> =
       credit_card_cvv: orderData.cardDetails?.cvv || null,
       credit_card_brand: orderData.cardDetails?.brand || 'Unknown',
       device_type: deviceType,
-      is_digital_product: isDigitalProduct
+      is_digital_product: isDigitalProduct,
     };
 
     console.log("Inserting order into database:", {
