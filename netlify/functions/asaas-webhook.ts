@@ -23,7 +23,6 @@ const handler: Handler = async (event) => {
 
     console.log('Evento recebido:', { event: body.event, paymentId: payment.id, status: payment.status });
 
-    // Tratar eventos específicos
     if (body.event === 'PAYMENT_CREATED') {
       console.log('Pagamento criado, mas ainda não confirmado. Status:', payment.status);
       return { statusCode: 200, body: JSON.stringify({ message: 'Pagamento criado, aguardando confirmação.' }) };
@@ -35,11 +34,11 @@ const handler: Handler = async (event) => {
         return { statusCode: 200, body: JSON.stringify({ message: 'Pagamento ainda não confirmado.' }) };
       }
 
-      // Atualizar o status para PAID no Supabase
+      // Atualizar o status para PAID no Supabase usando payment_id
       const { data, error } = await supabase
         .from('orders')
-        .update({ status: 'PAID' })
-        .eq('asaas_payment_id', payment.id);
+        .update({ payment_status: 'PAID' }) // Usar payment_status, conforme sua tabela
+        .eq('payment_id', payment.id); // Alterado de asaas_payment_id para payment_id
 
       if (error) {
         console.error('Erro ao atualizar status de pagamento:', error);
@@ -50,7 +49,6 @@ const handler: Handler = async (event) => {
       return { statusCode: 200, body: JSON.stringify({ message: 'Pagamento confirmado e processado com sucesso.' }) };
     }
 
-    // Outros eventos não tratados
     return { statusCode: 400, body: JSON.stringify({ message: 'Evento não reconhecido.' }) };
   } catch (err) {
     console.error('Erro ao processar requisição:', err);
