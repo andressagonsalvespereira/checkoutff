@@ -1,10 +1,10 @@
 import { Handler } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
 
-// Conexão com Supabase usando chave secreta (segura no painel Netlify)
+// Supabase config
 const supabase = createClient(
   process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY! // Usa a chave secreta com permissões para update
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
 const handler: Handler = async (event) => {
@@ -21,15 +21,29 @@ const handler: Handler = async (event) => {
     const payload = JSON.parse(event.body || '{}');
     console.log('📦 Payload do webhook:', payload);
 
-    const paymentId = payload.id;
-    const status = payload.status;
+    const eventName = payload.event;
+    const payment = payload.payment;
 
-    if (!paymentId || !status) {
+    if (!payment || !payment.id || !payment.status) {
       console.warn('⚠️ Webhook sem ID ou status de pagamento.');
-      return { statusCode: 400, body: 'Dados inválidos' };
+      return {
+        statusCode: 200,
+        body: JSON.stringify({ message: 'Ignorado: dados incompletos.' }),
+      };
     }
 
-    console.log('🔍 Procurando pedido com asaas_payment_id:', paymentId);
+    if (eventName !== 'PAYMENT_CONFIRMED') {
+      console.info('ℹ️ Evento ignorado:', eventName);
+      return {
+        statusCode: 200,
+        body: JSON.stringify({ message: `Evento ${eventName} ignorado.` }),
+      };
+    }
+
+    const paymentId = payment.id;
+    const paymentStatus = payment.status;
+
+    console.log('🔍 Buscando pedido com asaas_payment_id:', paymentId);
 
     const { data: order, error: fetchError } = await supabase
       .from('orders')
@@ -38,30 +52,35 @@ const handler: Handler = async (event) => {
       .single();
 
     if (fetchError || !order) {
-      console.error('❌ Pedido não encontrado no Supabase:', fetchError);
-      return { statusCode: 404, body: 'Pedido não encontrado' };
+      console.error('❌ Pedido não encontrado:', fetchError);
+      return {
+        statusCode: 404,
+        body: 'Pedido não encontrado.',
+      };
     }
 
-    console.log('📝 Atualizando status do pedido:', status);
+    console.log(`📝 Atualizando pedido ${order.id} para status: ${paymentStatus}`);
 
     const { error: updateError } = await supabase
       .from('orders')
-      .update({ status })
+      .update({ status: paymentStatus })
       .eq('id', order.id);
 
     if (updateError) {
-      console.error('❌ Erro ao atualizar status no Supabase:', updateError);
-      return { statusCode: 500, body: 'Erro ao atualizar status do pedido' };
+      console.error('❌ Erro ao atualizar pedido:', updateError);
+      return {
+        statusCode: 500,
+        body: 'Erro ao atualizar o status do pedido.',
+      };
     }
 
     console.log('✅ Pedido atualizado com sucesso!');
-
     return {
       statusCode: 200,
       body: JSON.stringify({ success: true }),
     };
   } catch (err: any) {
-    console.error('❌ Erro no processamento do webhook:', err);
+    console.error('❌ Erro ao processar webhook:', err);
     return {
       statusCode: 500,
       body: JSON.stringify({ error: 'Erro interno', details: err.message }),
