@@ -32,12 +32,12 @@ const handler: Handler = async (event) => {
       customer_email: email,
       customer_cpf: cpfCnpj,
       customer_phone: phone,
-      price, // Remover o valor padrão
+      price,
       payment_method = 'PIX',
       product_name = 'Assinatura Anual - CineFlick Card',
     } = body;
 
-    console.log('Valor do price recebido:', price); // Log para depurar o price
+    console.log('Valor do price recebido:', price);
 
     if (!name || !email || !cpfCnpj || !price) {
       return { statusCode: 400, body: JSON.stringify({ error: 'Nome, email, CPF/CNPJ e preço são obrigatórios.' }) };
@@ -81,10 +81,7 @@ const handler: Handler = async (event) => {
       console.error('❌ Erro ao fazer JSON.parse da resposta de cliente:', err);
       return {
         statusCode: 500,
-        body: JSON.stringify({
-          error: 'Resposta do cliente não é JSON válido',
-          raw: customerRaw,
-        }),
+        body: JSON.stringify({ error: 'Resposta do cliente não é JSON válido', raw: customerRaw }),
       };
     }
 
@@ -123,10 +120,7 @@ const handler: Handler = async (event) => {
       console.error('❌ Erro ao fazer JSON.parse da resposta de pagamento:', err);
       return {
         statusCode: 500,
-        body: JSON.stringify({
-          error: 'Resposta de pagamento não é JSON válido',
-          raw: paymentRaw,
-        }),
+        body: JSON.stringify({ error: 'Resposta de pagamento não é JSON válido', raw: paymentRaw }),
       };
     }
 
@@ -187,4 +181,6 @@ const handler: Handler = async (event) => {
       body: JSON.stringify({ error: 'Erro interno ao criar pagamento', details: err.message }),
     };
   }
-}
+};
+
+export { handler };
