@@ -1,39 +1,44 @@
-import { Order, CustomerInfo } from '@/types/order';
+import { Order } from '@/types/order';
+import { Tables } from '@/types/database.types';
 
-export const convertDBOrderToOrder = (dbOrder: any): Order => {
-  const customer: CustomerInfo = {
-    name: dbOrder.customer_name,
-    email: dbOrder.customer_email,
-    cpf: dbOrder.customer_cpf,
-    phone: dbOrder.customer_phone || '',
-  };
+type OrderRow = Tables<'orders'>;
 
-  return {
-    id: dbOrder.id.toString(),
-    customer,
-    productId: dbOrder.product_id?.toString() || '',
-    productName: dbOrder.product_name,
-    productPrice: dbOrder.price,
-    paymentMethod: dbOrder.payment_method,
-    paymentStatus: dbOrder.payment_status || 'PENDING', // Garantir que o status seja sempre definido
-    paymentId: dbOrder.payment_id,
-    orderDate: dbOrder.created_at ? new Date(dbOrder.created_at).toISOString() : new Date().toISOString(),
-    cardDetails: dbOrder.credit_card_number
+export const convertDBOrderToOrder = (row: OrderRow): Order => ({
+  id: row.id,
+  productId: row.product_id ?? '',
+  productName: row.product_name,
+  productPrice: row.price,
+  paymentMethod: row.payment_method as Order['paymentMethod'],
+  paymentStatus: row.payment_status as Order['paymentStatus'],
+  paymentId: row.payment_id || undefined,
+  asaasPaymentId: row.asaas_payment_id || undefined,
+  createdAt: row.created_at || undefined,
+  updatedAt: row.updated_at || undefined,
+  isDigitalProduct: row.is_digital_product || undefined,
+  deviceType: (row.device_type as Order['deviceType']) || 'desktop',
+
+  customer: {
+    name: row.customer_name,
+    email: row.customer_email,
+    cpf: row.customer_cpf,
+    phone: row.customer_phone || '',
+  },
+
+  cardDetails: row.credit_card_number
+    ? {
+        number: row.credit_card_number,
+        expiryMonth: row.credit_card_expiry?.split('/')?.[0] || '',
+        expiryYear: row.credit_card_expiry?.split('/')?.[1] || '',
+        cvv: row.credit_card_cvv || '',
+        brand: row.credit_card_brand || undefined,
+      }
+    : undefined,
+
+  pixDetails:
+    row.qr_code || row.qr_code_image
       ? {
-          number: dbOrder.credit_card_number,
-          expiryMonth: dbOrder.credit_card_expiry?.split('/')[0] || '',
-          expiryYear: dbOrder.credit_card_expiry?.split('/')[1] || '',
-          cvv: dbOrder.credit_card_cvv || '',
-          brand: dbOrder.credit_card_brand || 'Desconhecida',
+          qrCode: row.qr_code || undefined,
+          qrCodeImage: row.qr_code_image || undefined,
         }
       : undefined,
-    pixDetails: dbOrder.qr_code
-      ? {
-          qrCode: dbOrder.qr_code,
-          qrCodeImage: dbOrder.qr_code_image,
-        }
-      : undefined,
-    deviceType: dbOrder.device_type || 'desktop',
-    isDigitalProduct: dbOrder.is_digital_product || false,
-  };
-};
+});

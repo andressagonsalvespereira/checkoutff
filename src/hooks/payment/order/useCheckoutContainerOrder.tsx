@@ -62,7 +62,7 @@ export const useCheckoutOrder = ({
       timeout = setTimeout(() => {
         setIsProcessing(false);
         processingRef.current = false;
-        logger.warn('[useCheckoutOrder] Resetting processing state after timeout');
+        logger.warn('[useCheckoutOrder] Resetando estado de processamento após timeout');
       }, 30000);
     }
     return () => clearTimeout(timeout);
@@ -75,16 +75,16 @@ export const useCheckoutOrder = ({
     pixDetails?: PixDetails
   ): Promise<Order> => {
     try {
-      logger.log('[useCheckoutOrder] 🔄 Iniciando createOrder com paymentId:', paymentId);
+      logger.log('[useCheckoutOrder] 🔄 Iniciando criação do pedido com paymentId:', paymentId);
 
       if (isProcessing || processingRef.current || globalPaymentsInProgress.has(paymentId)) {
-        logger.warn('[useCheckoutOrder] ⚠️ Já está em processamento:', paymentId);
-        throw new Error('Processing in progress. Please wait.');
+        logger.warn('[useCheckoutOrder] ⚠️ Já em processamento:', paymentId);
+        throw new Error('Pedido em processamento. Aguarde...');
       }
 
       if (orderCreatedRef.current === paymentId) {
         logger.warn('[useCheckoutOrder] ⚠️ Pedido duplicado com paymentId:', paymentId);
-        throw new Error('Duplicate payment ID');
+        throw new Error('ID de pagamento já utilizado.');
       }
 
       setIsProcessing(true);
@@ -109,24 +109,17 @@ export const useCheckoutOrder = ({
           : undefined,
       };
 
-      logger.log('[useCheckoutOrder] 🧾 Dados do cliente:', customer);
-
       const isPixPayment = !cardDetails && pixDetails;
       const resolved = (formState.useCustomProcessing && !isPixPayment)
         ? resolveManualStatus(formState.manualCardStatus)
         : baseStatus.toUpperCase();
-
-      logger.log('[useCheckoutOrder] 🧠 Status resolvido:', resolved);
 
       const finalStatus: PaymentStatus =
         resolved === 'CONFIRMED' ? 'PAID' :
         resolved === 'REJECTED' ? 'DENIED' :
         'PENDING';
 
-      logger.log('[useCheckoutOrder] ✅ Status final normalizado:', finalStatus);
-
       const deviceType: DeviceType = detectDeviceType();
-      logger.log('[useCheckoutOrder] 💻 Tipo de dispositivo detectado:', deviceType);
 
       const newOrder = await addOrder({
         customer,
@@ -136,20 +129,19 @@ export const useCheckoutOrder = ({
         paymentMethod: cardDetails ? 'CREDIT_CARD' : 'PIX',
         paymentStatus: finalStatus,
         paymentId,
+        asaas_payment_id: paymentId, // ✅ ESSENCIAL para integração com webhook
         cardDetails,
         pixDetails: isPixPayment ? {
-          qrCode: pixDetails?.qrCode || "QR_CODE_NOT_AVAILABLE",
-          qrCodeImage: pixDetails?.qrCodeImage || "",
-          expirationDate: pixDetails?.expirationDate || new Date().toISOString()
+          qrCode: pixDetails?.qrCode || 'QR_CODE_NOT_AVAILABLE',
+          qrCodeImage: pixDetails?.qrCodeImage || '',
+          expirationDate: pixDetails?.expirationDate || new Date().toISOString(),
         } : undefined,
         orderDate: new Date().toISOString(),
         deviceType,
         isDigitalProduct: productDetails.isDigital,
       });
 
-      logger.log('[useCheckoutOrder] ✅ Pedido criado com sucesso! ID:', newOrder.id);
-
-      // Salvar o orderId no localStorage para recuperação futura
+      logger.log('[useCheckoutOrder] ✅ Pedido criado com ID:', newOrder.id);
       localStorage.setItem('lastOrderId', newOrder.id!.toString());
 
       toast({
