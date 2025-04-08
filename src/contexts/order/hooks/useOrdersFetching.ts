@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Order } from '@/types/order';
 import { useToast } from '@/hooks/use-toast';
@@ -33,7 +32,21 @@ export const useOrdersFetching = () => {
     }
   };
 
-  // Initial fetch on mount
+  const getOrderById = async (id: string | number): Promise<Order | null> => {
+    try {
+      const existing = orders.find((order) => order.id === Number(id));
+      if (existing) return existing;
+
+      const freshOrders = await loadOrders();
+      const found = freshOrders.find((order) => order.id === Number(id)) || null;
+      if (found) setOrders(freshOrders); // Atualiza o estado local
+      return found;
+    } catch (error) {
+      logger.error('[getOrderById] Erro ao buscar pedido por ID:', error);
+      return null;
+    }
+  };
+
   useEffect(() => {
     fetchOrders();
   }, []);
@@ -43,6 +56,7 @@ export const useOrdersFetching = () => {
     setOrders,
     loading,
     error,
-    refreshOrders: fetchOrders
+    refreshOrders: fetchOrders,
+    getOrderById, // ✅ Agora incluso corretamente
   };
 };
