@@ -35,7 +35,6 @@ const handler: Handler = async (event) => {
       };
     }
 
-    // Busca no Supabase por payment_id ou asaas_payment_id
     const { data, error } = await supabase
       .from('orders')
       .select('id, payment_status, payment_id, asaas_payment_id')
