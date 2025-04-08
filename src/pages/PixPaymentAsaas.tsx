@@ -1,5 +1,6 @@
+// src/pages/PixPaymentAsaas.tsx
 import React, { useEffect, useState } from 'react';
-import { useParams, useLocation, useNavigate } from 'react-router-dom';
+import { useParams, useLocation } from 'react-router-dom';
 import { useProducts } from '@/contexts/ProductContext';
 import { useAsaas } from '@/contexts/AsaasContext';
 import { useOrders } from '@/contexts/OrderContext';
@@ -22,10 +23,9 @@ const PixPaymentAsaas: React.FC = () => {
   const [paymentData, setPaymentData] = useState<any>(null);
   const [useFallback, setUseFallback] = useState(false);
   const { toast } = useToast();
-  const navigate = useNavigate();
 
   const orderId = state?.orderData?.id || localStorage.getItem('lastOrderId');
-  usePaymentPolling(orderId, state?.orderData);
+  usePaymentPolling(orderId || undefined, true, state?.orderData);
 
   useEffect(() => {
     const loadProductAndPaymentData = async () => {
@@ -72,14 +72,13 @@ const PixPaymentAsaas: React.FC = () => {
           description: error.message || 'Não foi possível carregar o pagamento.',
           variant: 'destructive',
         });
-        navigate('/payment-failed');
       } finally {
         setLoading(false);
       }
     };
 
     loadProductAndPaymentData();
-  }, [productSlug, getProductBySlug, getOrderById, settings, state, toast, navigate, orderId]);
+  }, [productSlug, getProductBySlug, getOrderById, settings, state, toast, orderId]);
 
   if (loading) {
     return (
