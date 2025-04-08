@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { useProducts } from '@/contexts/ProductContext';
 import { useAsaas } from '@/contexts/AsaasContext';
-import { useOrders } from '@/contexts/OrderContext'; // Adicionar contexto para buscar pedidos
+import { useOrders } from '@/contexts/OrderContext';
 import { logger } from '@/utils/logger';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2 } from 'lucide-react';
@@ -14,7 +14,7 @@ const PixPaymentAsaas: React.FC = () => {
   const { productSlug } = useParams<{ productSlug: string }>();
   const { state } = useLocation();
   const { getProductBySlug } = useProducts();
-  const { getOrderById } = useOrders(); // Função para buscar pedido pelo ID
+  const { getOrderById } = useOrders();
   const { settings } = useAsaas();
   const [loading, setLoading] = useState(true);
   const [product, setProduct] = useState<any>(null);
@@ -34,15 +34,13 @@ const PixPaymentAsaas: React.FC = () => {
         if (!settings?.asaasApiKey) throw new Error("Chave da API do Asaas não configurada.");
         logger.log("Produto encontrado:", foundProduct);
 
-        // Usar os dados do pedido passados via state
         let orderData = state?.orderData;
         logger.log("Order data received via state:", orderData);
 
-        // Se o state.orderData não estiver disponível (ex.: após recarregamento), buscar no Supabase
         if (!orderData || !orderData.pixDetails) {
-          const orderId = localStorage.getItem('lastOrderId'); // Supondo que você salvou o orderId
+          const orderId = localStorage.getItem('lastOrderId');
           if (!orderId) throw new Error("ID do pedido não encontrado.");
-          
+
           const order = await getOrderById(orderId);
           if (!order || !order.pixDetails) {
             throw new Error("Dados do pagamento PIX não encontrados no Supabase.");
@@ -52,7 +50,6 @@ const PixPaymentAsaas: React.FC = () => {
 
         logger.log("PIX details from orderData:", orderData.pixDetails);
 
-        // Validar o qrCodeImage
         const qrCodeImage = orderData.pixDetails.qrCodeImage;
         if (!qrCodeImage || !qrCodeImage.startsWith("data:image/")) {
           logger.warn("qrCodeImage inválido ou ausente, usando fallback:", qrCodeImage);
@@ -65,7 +62,6 @@ const PixPaymentAsaas: React.FC = () => {
             qrCodeImage: qrCodeImage,
           },
         });
-
       } catch (error: any) {
         logger.error("Erro ao carregar dados do pagamento via Asaas:", error);
         toast({
@@ -81,6 +77,38 @@ const PixPaymentAsaas: React.FC = () => {
 
     loadProductAndPaymentData();
   }, [productSlug, getProductBySlug, getOrderById, settings, state, toast, navigate]);
+
+  // 🔁 Polling para checar status de pagamento
+  useEffect(() => {
+    const orderId = state?.orderData?.id || localStorage.getItem('lastOrderId');
+    if (!orderId) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const latestOrder = await getOrderById(orderId);
+        if (!latestOrder) return;
+
+        const status = (latestOrder.payment_status || '').toUpperCase();
+        logger.log('[Polling] Status atual do pedido:', status);
+
+        if (status === 'PAID' || status === 'CONFIRMED') {
+          logger.log('✅ Pagamento confirmado, redirecionando...');
+          navigate('/payment-success', { state: { orderData: latestOrder } });
+          clearInterval(interval);
+        }
+
+        if (status === 'DENIED' || status === 'CANCELLED') {
+          logger.warn('❌ Pagamento negado, redirecionando...');
+          navigate('/payment-failed', { state: { orderData: latestOrder } });
+          clearInterval(interval);
+        }
+      } catch (error) {
+        logger.error('[Polling] Erro ao verificar status do pedido:', error);
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [state?.orderData?.id, getOrderById, navigate]);
 
   if (loading) {
     return (
