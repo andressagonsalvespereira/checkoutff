@@ -5,7 +5,6 @@ import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { useProducts } from '@/contexts/ProductContext';
-import { useCheckoutForm } from '@/hooks/useCheckoutForm';
 import { useAsaas } from '@/contexts/AsaasContext';
 import { useOrders } from '@/contexts/OrderContext';
 import CheckoutContainer from '@/components/checkout/CheckoutContainer';
@@ -68,14 +67,10 @@ const Checkout: React.FC = () => {
 
   useEffect(() => {
     if (settings) {
-      if (paymentMethod === 'card' && !settings.allowCreditCard) {
-        if (settings.allowPix) {
-          setPaymentMethod('pix');
-        }
-      } else if (paymentMethod === 'pix' && !settings.allowPix) {
-        if (settings.allowCreditCard) {
-          setPaymentMethod('card');
-        }
+      if (paymentMethod === 'card' && !settings.allowCreditCard && settings.allowPix) {
+        setPaymentMethod('pix');
+      } else if (paymentMethod === 'pix' && !settings.allowPix && settings.allowCreditCard) {
+        setPaymentMethod('card');
       }
     }
   }, [settings, paymentMethod]);
@@ -109,18 +104,14 @@ const Checkout: React.FC = () => {
           variant: finalStatus === 'rejected' ? 'destructive' : 'default'
         });
 
-        // Priorizar redirecionamento para PIX
         if (paymentMethod === 'pix') {
-          if (settings?.usePixAsaas && settings?.asaasApiKey) {
-            console.log("✅ Redirecionando para pagamento via Asaas");
-            navigate(`/pix-asaas/${selectedProduct.slug}`, { state: { orderData: paymentData } });
-          } else {
-            navigate(`/pix-payment/${selectedProduct.slug}`, { state: { orderData: paymentData } });
-          }
+          const path = settings?.usePixAsaas && settings?.asaasApiKey
+            ? `/pix-asaas/${selectedProduct.slug}`
+            : `/pix-payment/${selectedProduct.slug}`;
+          navigate(path, { state: { orderData: paymentData } });
           return;
         }
 
-        // Fluxo para cartão permanece inalterado
         if (finalStatus === 'confirmed') {
           navigate('/payment-success', { state: { orderData: paymentData } });
         } else if (finalStatus === 'pending') {
@@ -150,6 +141,10 @@ const Checkout: React.FC = () => {
         paymentMethod: paymentMethodEnum,
         paymentStatus: paymentStatusEnum,
         isDigitalProduct: selectedProduct.digital,
+
+        // ✅ Campo essencial para rastreabilidade do pedido via paymentId
+        paymentId: paymentData.id,
+
         cardDetails: paymentMethod === 'card' && paymentData.cardDetails ? {
           number: paymentData.cardDetails.number,
           expiryMonth: paymentData.cardDetails.expiryMonth,
