@@ -32,15 +32,15 @@ const handler: Handler = async (event) => {
       customer_email: email,
       customer_cpf: cpfCnpj,
       customer_phone: phone,
-      price = 19.9, // Valor padrão
+      price, // Remover o valor padrão
       payment_method = 'PIX',
       product_name = 'Assinatura Anual - CineFlick Card',
     } = body;
 
     console.log('Valor do price recebido:', price); // Log para depurar o price
 
-    if (!name || !email || !cpfCnpj) {
-      return { statusCode: 400, body: JSON.stringify({ error: 'Nome, email e CPF/CNPJ são obrigatórios.' }) };
+    if (!name || !email || !cpfCnpj || !price) {
+      return { statusCode: 400, body: JSON.stringify({ error: 'Nome, email, CPF/CNPJ e preço são obrigatórios.' }) };
     }
 
     const apiKey = process.env.ASAAS_API_KEY;
@@ -187,6 +187,4 @@ const handler: Handler = async (event) => {
       body: JSON.stringify({ error: 'Erro interno ao criar pagamento', details: err.message }),
     };
   }
-};
-
-export { handler };
+}
