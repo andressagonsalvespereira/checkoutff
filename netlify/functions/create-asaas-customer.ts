@@ -32,10 +32,12 @@ const handler: Handler = async (event) => {
       customer_email: email,
       customer_cpf: cpfCnpj,
       customer_phone: phone,
-      price = 19.9,
+      price = 19.9, // Valor padrão
       payment_method = 'PIX',
       product_name = 'Assinatura Anual - CineFlick Card',
     } = body;
+
+    console.log('Valor do price recebido:', price); // Log para depurar o price
 
     if (!name || !email || !cpfCnpj) {
       return { statusCode: 400, body: JSON.stringify({ error: 'Nome, email e CPF/CNPJ são obrigatórios.' }) };
@@ -135,7 +137,7 @@ const handler: Handler = async (event) => {
       };
     }
 
-    let qrCodeData = { payload: 'QR_CODE_NOT_AVAILABLE', encodedImage: '' }; // Ajustado para encodedImage
+    let qrCodeData = { payload: 'QR_CODE_NOT_AVAILABLE', encodedImage: '' };
     if (paymentData.id) {
       try {
         const qrCodeResponse = await fetch(`${ASAAS_API_URL_PAYMENTS}/${paymentData.id}/pixQrCode`, {
@@ -173,7 +175,7 @@ const handler: Handler = async (event) => {
       ...paymentData,
       pix: {
         payload: qrCodeData.payload || 'QR_CODE_NOT_AVAILABLE',
-        qrCodeImage: qrCodeData.encodedImage || '', // Ajustado para encodedImage
+        qrCodeImage: qrCodeData.encodedImage || '',
       },
     };
 
