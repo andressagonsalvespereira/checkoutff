@@ -5,8 +5,37 @@ const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
+// 🚫 Não usamos PAYMENT_RECEIVED como PAID — risco de falso positivo
+const statusMap: Record<string, 'PAID' | 'DENIED' | null> = {
+  // Sucesso REAL
+  PAYMENT_CONFIRMED: 'PAID',
+  PAYMENT_AUTHORIZED: 'PAID',
+  PAYMENT_APPROVED_BY_RISK_ANALYSIS: 'PAID',
+  PAYMENT_ANTICIPATED: 'PAID',
+
+  // Falhas
+  PAYMENT_REPROVED_BY_RISK_ANALYSIS: 'DENIED',
+  PAYMENT_REFUNDED: 'DENIED',
+  PAYMENT_REFUND_DENIED: 'DENIED',
+  PAYMENT_OVERDUE: 'DENIED',
+  PAYMENT_CHARGEBACK_REQUESTED: 'DENIED',
+  PAYMENT_CREDIT_CARD_CAPTURE_REFUSED: 'DENIED',
+
+  // ⚠️ Apenas log — não altera status
+  PAYMENT_RECEIVED: null,
+  PAYMENT_CREATED: null,
+  PAYMENT_UPDATED: null,
+  PAYMENT_CHECKOUT_VIEWED: null,
+  PAYMENT_BANK_SLIP_VIEWED: null,
+  PAYMENT_DUNNING_REQUESTED: null,
+  PAYMENT_SPLIT_CANCELLED: null,
+};
+
 const handler: Handler = async (event) => {
-  console.log('📬 Webhook recebido:', { method: event.httpMethod, body: event.body });
+  console.log('📬 Webhook recebido:', {
+    method: event.httpMethod,
+    body: event.body,
+  });
 
   if (event.httpMethod !== 'POST') {
     return {
@@ -23,53 +52,60 @@ const handler: Handler = async (event) => {
   }
 
   try {
-    const body = JSON.parse(event.body);
-    const { event: eventType, payment } = body;
+    const payload = JSON.parse(event.body);
+    const { event: eventType, payment } = payload;
 
-    console.log('📦 Evento do Asaas:', { eventType, paymentId: payment.id, status: payment.status });
-
-    if (eventType === 'PAYMENT_CREATED') {
+    if (!payment?.id || !eventType) {
       return {
-        statusCode: 200,
-        body: JSON.stringify({ message: 'Pagamento criado. Aguardando confirmação.' }),
+        statusCode: 400,
+        body: JSON.stringify({ error: 'Payload inválido. payment.id e event são obrigatórios.' }),
       };
     }
 
-    if (eventType === 'PAYMENT_CONFIRMED' || eventType === 'PAYMENT_RECEIVED') {
-      if (payment.status !== 'CONFIRMED' && payment.status !== 'RECEIVED') {
-        console.log(`⚠️ Pagamento com status ${payment.status} ainda não confirmado/recebido. Ignorando.`);
-        return {
-          statusCode: 200,
-          body: JSON.stringify({ message: 'Pagamento ainda não confirmado.' }),
-        };
-      }
+    console.log('📦 Evento recebido do Asaas:', {
+      eventType,
+      paymentId: payment.id,
+      paymentStatus: payment.status,
+    });
 
-      const { data, error } = await supabase
-        .from('orders')
-        .update({ payment_status: 'PAID' })
-        .eq('asaas_payment_id', payment.id); // ✅ Corrigido aqui!
+    const newStatus = statusMap[eventType];
 
-      if (error) {
-        console.error('❌ Erro ao atualizar pedido no Supabase:', error);
-        return {
-          statusCode: 500,
-          body: JSON.stringify({ error: 'Erro ao atualizar status do pedido.' }),
-        };
-      }
-
-      console.log('✅ Status do pedido atualizado para PAID.');
+    if (newStatus === undefined) {
+      console.warn('⚠️ Evento não reconhecido:', eventType);
       return {
         statusCode: 200,
-        body: JSON.stringify({ message: 'Pagamento confirmado e processado com sucesso.' }),
+        body: JSON.stringify({ message: `Evento ${eventType} ignorado (não mapeado).` }),
       };
     }
 
+    if (newStatus === null) {
+      console.log('ℹ️ Evento informativo, sem alteração de status:', eventType);
+      return {
+        statusCode: 200,
+        body: JSON.stringify({ message: `Evento ${eventType} recebido. Nenhuma atualização realizada.` }),
+      };
+    }
+
+    const { error } = await supabase
+      .from('orders')
+      .update({ payment_status: newStatus })
+      .eq('asaas_payment_id', payment.id);
+
+    if (error) {
+      console.error('❌ Erro ao atualizar status do pedido:', error);
+      return {
+        statusCode: 500,
+        body: JSON.stringify({ error: 'Erro ao atualizar status no banco de dados.' }),
+      };
+    }
+
+    console.log(`✅ Status do pedido atualizado para ${newStatus}`);
     return {
-      statusCode: 400,
-      body: JSON.stringify({ message: 'Evento não reconhecido.' }),
+      statusCode: 200,
+      body: JSON.stringify({ message: `Status atualizado para ${newStatus} com sucesso.` }),
     };
   } catch (err: any) {
-    console.error('❌ Erro ao processar webhook:', err);
+    console.error('❌ Erro no processamento do webhook:', err);
     return {
       statusCode: 500,
       body: JSON.stringify({
