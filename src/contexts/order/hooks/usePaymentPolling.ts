@@ -7,11 +7,12 @@ import {
   isConfirmedStatus,
   isRejectedStatus,
 } from '../utils/resolveManualStatus';
-import { checkPaymentStatus } from '../utils/checkPaymentStatus'; // Usa o polling real via API
+import { checkPaymentStatus } from '../utils/checkPaymentStatus';
 import { PaymentStatus } from '@/types/order';
 
 type UsePaymentPollingProps = {
   orderId?: string;
+  paymentId?: string; // Adicionamos esta prop para passar o asaas_payment_id
   enabled?: boolean;
   orderData?: any;
   onStatusChange?: (status: PaymentStatus) => void;
@@ -19,6 +20,7 @@ type UsePaymentPollingProps = {
 
 export function usePaymentPolling({
   orderId,
+  paymentId,
   enabled = true,
   orderData,
   onStatusChange,
@@ -34,15 +36,24 @@ export function usePaymentPolling({
       return;
     }
 
-    logger.log('[usePaymentPolling] 🚀 Iniciando polling', { orderId });
+    const idToCheck = paymentId || orderId; // Usa paymentId se disponível, senão orderId
+    logger.log('[usePaymentPolling] 🚀 Iniciando polling', { orderId, paymentId: idToCheck });
+    console.log('ID usado no polling:', idToCheck);
+
+    let attempts = 0;
+    const maxAttempts = 60; // 5 minutos com intervalo de 5 segundos
 
     intervalRef.current = setInterval(async () => {
       try {
         logger.log('[usePaymentPolling] 🔍 Verificando status via checkPaymentStatus');
-
-        const result = await checkPaymentStatus(orderId);
+        const result = await checkPaymentStatus(idToCheck);
         if (!result.success) {
           logger.warn('[usePaymentPolling] ⚠️ Falha ao verificar status do pedido', result.message);
+          attempts++;
+          if (result.message === 'Endpoint não encontrado' || attempts >= maxAttempts) {
+            clearInterval(intervalRef.current!);
+            navigate('/payment-failed');
+          }
           return;
         }
 
@@ -50,7 +61,6 @@ export function usePaymentPolling({
         setStatus(result.paymentStatus as PaymentStatus);
         logger.log('[usePaymentPolling] ✅ Status resolvido:', { resolvedStatus });
 
-        // Callback opcional
         if (onStatusChange) onStatusChange(result.paymentStatus as PaymentStatus);
 
         if (isConfirmedStatus(resolvedStatus)) {
@@ -63,11 +73,22 @@ export function usePaymentPolling({
           const order = await getOrderById(orderId);
           navigate('/payment-failed', { state: { orderData: order } });
           clearInterval(intervalRef.current!);
+        } else {
+          attempts++;
+          if (attempts >= maxAttempts) {
+            clearInterval(intervalRef.current!);
+            navigate('/payment-failed');
+          }
         }
       } catch (error: any) {
         logger.error('[usePaymentPolling] ❌ Erro ao verificar status do pagamento', {
           error: error?.message || error,
         });
+        attempts++;
+        if (attempts >= maxAttempts) {
+          clearInterval(intervalRef.current!);
+          navigate('/payment-failed');
+        }
       }
     }, 5000);
 
@@ -75,7 +96,7 @@ export function usePaymentPolling({
       logger.log('[usePaymentPolling] 🧹 Limpando intervalo', { orderId });
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [orderId, enabled, onStatusChange, navigate, getOrderById]);
+  }, [orderId, paymentId, enabled, onStatusChange, navigate, getOrderById]);
 
-  return { status }; // Retorna o status para quem quiser usar no componente
+  return { status };
 }

@@ -16,8 +16,8 @@ const PixPaymentAsaas: React.FC = () => {
   const { state } = useLocation();
   const navigate = useNavigate();
   const { getProductBySlug } = useProducts();
-  const { getOrderById } = useOrders();
   const { settings } = useAsaas();
+  const { getOrderById } = useOrders();
   const { toast } = useToast();
 
   const [loading, setLoading] = useState(true);
@@ -40,6 +40,7 @@ const PixPaymentAsaas: React.FC = () => {
   // Inicia polling de pagamento
   usePaymentPolling({
     orderId,
+    paymentId: orderDataFromState?.asaas_payment_id, // Passa o asaas_payment_id, se disponível
     enabled: !!orderId,
     orderData: orderDataFromState,
   });
