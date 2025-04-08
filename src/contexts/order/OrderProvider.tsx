@@ -4,29 +4,9 @@ import { OrderProviderProps } from './orderContextTypes';
 import { useOrdersFetching, useOrderOperations, useOrderFiltering } from './hooks';
 
 export const OrderProvider: React.FC<OrderProviderProps> = ({ children }) => {
-  // Hook para buscar pedidos e controlar estado
-  const {
-    orders,
-    setOrders,
-    loading,
-    error,
-    refreshOrders,
-    getOrderById, // ✅ Adicionado aqui
-  } = useOrdersFetching(); // ✅ Essa função deve vir desse hook!
-
-  const {
-    addOrder,
-    updateOrderStatus,
-    deleteOrder,
-    deleteAllOrdersByPaymentMethod,
-  } = useOrderOperations(orders, setOrders);
-
-  const {
-    filterOrdersByPaymentMethod,
-    filterOrdersByStatus,
-    filterOrdersByDevice,
-    getLatestOrders,
-  } = useOrderFiltering(orders);
+  const { orders, setOrders, loading, error, refreshOrders, getOrderById } = useOrdersFetching();
+  const { addOrder, updateOrderStatus, deleteOrder, deleteAllOrdersByPaymentMethod } = useOrderOperations(orders, setOrders);
+  const { filterOrdersByPaymentMethod, filterOrdersByStatus, filterOrdersByDevice, getLatestOrders } = useOrderFiltering(orders);
 
   return (
     <OrderContext.Provider
@@ -43,7 +23,7 @@ export const OrderProvider: React.FC<OrderProviderProps> = ({ children }) => {
         refreshOrders,
         deleteOrder,
         deleteAllOrdersByPaymentMethod,
-        getOrderById, // ✅ Aqui é onde faltava
+        getOrderById,
       }}
     >
       {children}

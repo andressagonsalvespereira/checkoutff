@@ -1,52 +1,81 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useOrders } from '@/contexts/OrderContext';
 import { logger } from '@/utils/logger';
-import { resolveManualStatus, isConfirmedStatus, isRejectedStatus } from '../utils/resolveManualStatus';
+import {
+  resolveManualStatus,
+  isConfirmedStatus,
+  isRejectedStatus,
+} from '../utils/resolveManualStatus';
+import { checkPaymentStatus } from '../utils/checkPaymentStatus'; // Usa o polling real via API
+import { PaymentStatus } from '@/types/order';
 
-export function usePaymentPolling(orderId?: string, enabled = true, orderData?: any) {
+type UsePaymentPollingProps = {
+  orderId?: string;
+  enabled?: boolean;
+  orderData?: any;
+  onStatusChange?: (status: PaymentStatus) => void;
+};
+
+export function usePaymentPolling({
+  orderId,
+  enabled = true,
+  orderData,
+  onStatusChange,
+}: UsePaymentPollingProps) {
   const navigate = useNavigate();
   const { getOrderById } = useOrders();
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [status, setStatus] = useState<PaymentStatus>('PENDING');
 
   useEffect(() => {
     if (!enabled || !orderId) {
-      logger.warn('[usePaymentPolling] Polling desativado: orderId ou enabled inválido', { orderId, enabled });
+      logger.warn('[usePaymentPolling] ❌ Polling desativado', { orderId, enabled });
       return;
     }
 
-    logger.log('[usePaymentPolling] Iniciando polling para orderId:', orderId);
-    const interval = setInterval(async () => {
+    logger.log('[usePaymentPolling] 🚀 Iniciando polling', { orderId });
+
+    intervalRef.current = setInterval(async () => {
       try {
-        logger.log('[usePaymentPolling] Verificando status do pedido:', orderId);
-        const latestOrder = await getOrderById(orderId);
-        if (!latestOrder) {
-          logger.warn('[usePaymentPolling] Pedido não encontrado:', orderId);
+        logger.log('[usePaymentPolling] 🔍 Verificando status via checkPaymentStatus');
+
+        const result = await checkPaymentStatus(orderId);
+        if (!result.success) {
+          logger.warn('[usePaymentPolling] ⚠️ Falha ao verificar status do pedido', result.message);
           return;
         }
-        logger.log('[usePaymentPolling] Pedido retornado:', latestOrder);
-        logger.log('[usePaymentPolling] Status bruto do pedido:', latestOrder.payment_status);
-        const status = resolveManualStatus(latestOrder.payment_status);
-        logger.log('[usePaymentPolling] Status resolvido:', status);
 
-        if (isConfirmedStatus(status)) {
-          logger.log('✅ Redirecionando para /payment-success');
-          navigate('/payment-success', { state: { orderData: latestOrder } });
-          clearInterval(interval);
-        } else if (isRejectedStatus(status)) {
-          logger.warn('❌ Redirecionando para /payment-failed');
-          navigate('/payment-failed', { state: { orderData: latestOrder } });
-          clearInterval(interval);
-        } else {
-          logger.log('[usePaymentPolling] Status ainda não finalizado:', status);
+        const resolvedStatus = resolveManualStatus(result.paymentStatus);
+        setStatus(result.paymentStatus as PaymentStatus);
+        logger.log('[usePaymentPolling] ✅ Status resolvido:', { resolvedStatus });
+
+        // Callback opcional
+        if (onStatusChange) onStatusChange(result.paymentStatus as PaymentStatus);
+
+        if (isConfirmedStatus(resolvedStatus)) {
+          logger.log('🎉 Pagamento confirmado. Redirecionando para /payment-success');
+          const order = await getOrderById(orderId);
+          navigate('/payment-success', { state: { orderData: order } });
+          clearInterval(intervalRef.current!);
+        } else if (isRejectedStatus(resolvedStatus)) {
+          logger.warn('🚫 Pagamento recusado. Redirecionando para /payment-failed');
+          const order = await getOrderById(orderId);
+          navigate('/payment-failed', { state: { orderData: order } });
+          clearInterval(intervalRef.current!);
         }
-      } catch (error) {
-        logger.error('[usePaymentPolling] Erro ao verificar status:', error);
+      } catch (error: any) {
+        logger.error('[usePaymentPolling] ❌ Erro ao verificar status do pagamento', {
+          error: error?.message || error,
+        });
       }
     }, 5000);
 
     return () => {
-      logger.log('[usePaymentPolling] Limpando intervalo para orderId:', orderId);
-      clearInterval(interval);
+      logger.log('[usePaymentPolling] 🧹 Limpando intervalo', { orderId });
+      if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [orderId, enabled, getOrderById, navigate]);
+  }, [orderId, enabled, onStatusChange, navigate, getOrderById]);
+
+  return { status }; // Retorna o status para quem quiser usar no componente
 }

@@ -1,5 +1,5 @@
 export type PaymentMethod = 'CREDIT_CARD' | 'PIX' | 'BANK_SLIP';
-export type PaymentStatus = "PAID" | "PENDING" | "DENIED";
+export type PaymentStatus = 'PAID' | 'PENDING' | 'DENIED';
 export type DeviceType = 'mobile' | 'desktop' | 'tablet' | 'unknown';
 
 export interface CustomerInfo {
@@ -41,6 +41,7 @@ export interface Order {
   paymentMethod: PaymentMethod;
   paymentStatus: PaymentStatus;
   paymentId?: string;
+  asaasPaymentId?: string; // ✅ Adicionado para rastrear pagamentos via Asaas
   cardDetails?: CardDetails;
   pixDetails?: PixDetails;
   isDigitalProduct?: boolean;
@@ -65,5 +66,5 @@ export interface OrderContextType {
   refreshOrders: () => Promise<void>;
   deleteOrder: (id: string | number) => Promise<void>;
   deleteAllOrdersByPaymentMethod: (paymentMethod: PaymentMethod) => Promise<void>;
-  getOrderById: (id: string | number) => Promise<Order | null>; // ✅ Adicionado para uso no polling
+  getOrderById: (id: string | number) => Promise<Order | null>; // ✅ Utilizado para polling e controle
 }

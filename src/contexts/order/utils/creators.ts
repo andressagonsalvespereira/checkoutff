@@ -1,62 +1,64 @@
 import { supabase } from '@/integrations/supabase/client';
 import { CreateOrderInput, Order } from '@/types/order';
-import { convertDBOrderToOrder } from './converters'; // Ajustado para o caminho correto
+import { convertDBOrderToOrder } from './converters';
 
 export const createOrder = async (orderData: CreateOrderInput): Promise<Order> => {
   try {
-    console.log('Starting order creation with data:', {
+    console.log('📦 Iniciando criação do pedido com os dados:', {
       ...orderData,
       cardDetails: orderData.cardDetails
-        ? { ...orderData.cardDetails, number: '****' + orderData.cardDetails.number.slice(-4), cvv: '***' }
+        ? {
+            ...orderData.cardDetails,
+            number: '****' + orderData.cardDetails.number.slice(-4),
+            cvv: '***',
+          }
         : undefined,
     });
 
-    if (!orderData.customer?.name?.trim()) throw new Error('Customer name is required');
-    if (!orderData.customer?.email?.trim()) throw new Error('Customer email is required');
-    if (!orderData.customer?.cpf?.trim()) throw new Error('Customer CPF is required');
+    if (!orderData.customer?.name?.trim()) throw new Error('Nome do cliente é obrigatório');
+    if (!orderData.customer?.email?.trim()) throw new Error('Email do cliente é obrigatório');
+    if (!orderData.customer?.cpf?.trim()) throw new Error('CPF do cliente é obrigatório');
 
-    if (orderData.customer?.email && orderData.productId) {
-      const fiveMinutesAgo = new Date();
-      fiveMinutesAgo.setMinutes(fiveMinutesAgo.getMinutes() - 5);
+    const fiveMinutesAgo = new Date();
+    fiveMinutesAgo.setMinutes(fiveMinutesAgo.getMinutes() - 5);
 
-      const productIdNumber = typeof orderData.productId === 'string' ? parseInt(orderData.productId, 10) : orderData.productId;
+    const productIdNumber = typeof orderData.productId === 'string'
+      ? parseInt(orderData.productId, 10)
+      : Number(orderData.productId);
 
-      if (orderData.paymentId) {
-        const { data: existing, error } = await supabase
-          .from('orders')
-          .select('*')
-          .eq('payment_id', orderData.paymentId)
-          .limit(1);
-
-        if (!error && existing?.length > 0) {
-          return convertDBOrderToOrder(existing[0]);
-        }
-      }
-
-      const { data: duplicates, error: checkError } = await supabase
+    if (orderData.paymentId) {
+      const { data: existing } = await supabase
         .from('orders')
         .select('*')
-        .eq('customer_email', orderData.customer.email)
-        .eq('product_id', productIdNumber)
-        .eq('product_name', orderData.productName)
-        .eq('payment_method', orderData.paymentMethod)
-        .gte('created_at', fiveMinutesAgo.toISOString());
+        .eq('payment_id', orderData.paymentId)
+        .limit(1);
 
-      if (!checkError && duplicates?.length > 0) {
-        const exactMatch = duplicates.find(
-          (order) =>
-            order.price === orderData.productPrice &&
-            order.customer_name === orderData.customer.name &&
-            order.customer_cpf === orderData.customer.cpf
-        );
-        if (exactMatch) {
-          console.log('Duplicate order detected, returning existing ID:', exactMatch.id);
-          return convertDBOrderToOrder(exactMatch);
-        }
+      if (existing?.length) {
+        return convertDBOrderToOrder(existing[0]);
       }
     }
 
-    const productIdNumber = typeof orderData.productId === 'string' ? parseInt(orderData.productId, 10) : Number(orderData.productId);
+    const { data: duplicates } = await supabase
+      .from('orders')
+      .select('*')
+      .eq('customer_email', orderData.customer.email)
+      .eq('product_id', productIdNumber)
+      .eq('product_name', orderData.productName)
+      .eq('payment_method', orderData.paymentMethod)
+      .gte('created_at', fiveMinutesAgo.toISOString());
+
+    const exactMatch = duplicates?.find(
+      (order) =>
+        order.price === orderData.productPrice &&
+        order.customer_name === orderData.customer.name &&
+        order.customer_cpf === orderData.customer.cpf
+    );
+
+    if (exactMatch) {
+      console.log('⚠️ Pedido duplicado detectado. Retornando ID existente:', exactMatch.id);
+      return convertDBOrderToOrder(exactMatch);
+    }
+
     const deviceType = orderData.deviceType || 'desktop';
     const isDigitalProduct = orderData.isDigitalProduct || false;
 
@@ -64,6 +66,7 @@ export const createOrder = async (orderData: CreateOrderInput): Promise<Order> =
     const statusMap: Record<string, string> = {
       PAGO: 'PAID',
       PAID: 'PAID',
+      CONFIRMED: 'PAID',
       PENDING: 'PENDING',
       AGUARDANDO: 'PENDING',
       CANCELADO: 'CANCELLED',
@@ -77,13 +80,13 @@ export const createOrder = async (orderData: CreateOrderInput): Promise<Order> =
       NEGADO: 'DENIED',
       DENIED: 'DENIED',
       DECLINED: 'DENIED',
-      CONFIRMED: 'PAID',
     };
+
     const normalizedStatus = statusMap[rawStatus] || 'PENDING';
-    const allowedStatuses: string[] = ['PENDING', 'PAID', 'APPROVED', 'DENIED', 'ANALYSIS', 'CANCELLED', 'CONFIRMED'];
+    const allowedStatuses = ['PENDING', 'PAID', 'APPROVED', 'DENIED', 'ANALYSIS', 'CANCELLED'];
     const safeStatus = allowedStatuses.includes(normalizedStatus) ? normalizedStatus : 'PENDING';
 
-    console.log(`Payment status normalized: ${orderData.paymentStatus} → ${safeStatus}`);
+    console.log(`🔍 Status normalizado: ${orderData.paymentStatus} → ${safeStatus}`);
 
     const orderToInsert = {
       customer_name: orderData.customer.name,
@@ -108,22 +111,17 @@ export const createOrder = async (orderData: CreateOrderInput): Promise<Order> =
       is_digital_product: isDigitalProduct,
     };
 
-    console.log('Inserting order into database:', {
-      ...orderToInsert,
-      credit_card_number: orderToInsert.credit_card_number ? '****' + orderToInsert.credit_card_number.slice(-4) : null,
-      credit_card_cvv: orderData.cardDetails?.cvv ? '***' : null,
-    });
-
     const { data, error } = await supabase.from('orders').insert(orderToInsert).select().single();
+
     if (error) {
-      console.error('Error inserting order:', error);
-      throw new Error(`Error creating order: ${error.message}`);
+      console.error('❌ Erro ao criar o pedido:', error);
+      throw new Error(`Erro ao criar pedido: ${error.message}`);
     }
 
-    console.log('Order successfully created! ID:', data.id);
+    console.log('✅ Pedido criado com sucesso! ID:', data.id);
     return convertDBOrderToOrder(data);
   } catch (error) {
-    console.error('Failed to create order:', error);
+    console.error('❌ Falha ao criar o pedido:', error);
     throw error;
   }
 };
@@ -154,17 +152,19 @@ export const handleCreateOrderAndPayment = async (
       throw new Error('Erro ao criar pagamento no Asaas: ' + JSON.stringify(paymentData));
     }
 
+    // ✅ Aqui está a correção importante:
     const { error: updateError } = await supabase
       .from('orders')
       .update({
-        payment_id: paymentData.id,
+        asaas_payment_id: paymentData.id, // <-- salva o ID do pagamento do Asaas corretamente
+        payment_id: paymentData.id, // opcional: manter também nesse campo
         qr_code: paymentData.pix.payload,
         qr_code_image: paymentData.pix.qrCodeImage,
       })
       .eq('id', newOrder.id);
 
     if (updateError) {
-      console.error('Erro ao atualizar pedido com dados do Asaas:', updateError);
+      console.error('❌ Erro ao atualizar pedido com dados do Asaas:', updateError);
       throw updateError;
     }
 
@@ -182,7 +182,7 @@ export const handleCreateOrderAndPayment = async (
       },
     });
   } catch (error) {
-    console.error('Erro ao criar pedido e pagamento:', error);
+    console.error('❌ Erro ao criar pedido e pagamento:', error);
     throw error;
   }
 };
