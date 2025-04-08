@@ -1,4 +1,3 @@
-// netlify/functions/create-asaas-customer.ts
 import { Handler } from '@netlify/functions';
 
 const ASAAS_API_URL_CUSTOMERS = 'https://sandbox.asaas.com/api/v3/customers';
@@ -136,7 +135,7 @@ const handler: Handler = async (event) => {
       };
     }
 
-    let qrCodeData = { payload: 'QR_CODE_NOT_AVAILABLE', qrCodeImage: '' };
+    let qrCodeData = { payload: 'QR_CODE_NOT_AVAILABLE', encodedImage: '' }; // Ajustado para encodedImage
     if (paymentData.id) {
       try {
         const qrCodeResponse = await fetch(`${ASAAS_API_URL_PAYMENTS}/${paymentData.id}/pixQrCode`, {
@@ -174,7 +173,7 @@ const handler: Handler = async (event) => {
       ...paymentData,
       pix: {
         payload: qrCodeData.payload || 'QR_CODE_NOT_AVAILABLE',
-        qrCodeImage: qrCodeData.qrCodeImage || '',
+        qrCodeImage: qrCodeData.encodedImage || '', // Ajustado para encodedImage
       },
     };
 
