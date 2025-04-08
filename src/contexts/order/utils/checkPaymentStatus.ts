@@ -1,45 +1,42 @@
-import { PaymentStatus } from '@/types/order';
 import { logger } from '@/utils/logger';
 
-export interface CheckStatusResult {
+export async function checkPaymentStatus(orderId: string): Promise<{
   success: boolean;
-  paymentStatus?: PaymentStatus;
-  message: string;
-}
-
-/**
- * Verifica o status do pagamento do pedido via API interna.
- * Usa o ID do pedido para consultar o status mais recente.
- */
-export const checkPaymentStatus = async (
-  orderId: string | number
-): Promise<CheckStatusResult> => {
+  paymentStatus?: string;
+  message?: string;
+}> {
   try {
-    logger.log('[checkPaymentStatus] 🔄 Verificando status para pedido:', orderId);
+    const response = await fetch('/.netlify/functions/check-payment-status', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ paymentId: orderId }), // ← aqui pode mudar para asaas_payment_id se necessário
+    });
 
-    const res = await fetch(`/api/check-payment-status?orderId=${orderId}`);
-    const data = await res.json();
-
-    if (!res.ok) {
-      logger.warn('[checkPaymentStatus] ❌ Falha na resposta da API:', data.message);
-      return {
-        success: false,
-        message: data.message || 'Erro ao verificar status do pagamento.',
-      };
+    if (!response.ok) {
+      const text = await response.text();
+      logger.error('[checkPaymentStatus] ❌ Erro na resposta da API:', text);
+      return { success: false, message: 'Erro ao buscar status da API' };
     }
 
-    logger.log('[checkPaymentStatus] ✅ Status recebido:', data.paymentStatus);
+    const data = await response.json();
+
+    logger.log('[checkPaymentStatus] ✅ Resposta recebida da função:', data);
+
+    if (!data.status) {
+      return { success: false, message: 'Resposta inválida da função' };
+    }
 
     return {
       success: true,
-      paymentStatus: data.paymentStatus,
-      message: data.message,
+      paymentStatus: data.status,
     };
   } catch (error: any) {
     logger.error('[checkPaymentStatus] ❌ Erro na requisição:', error);
     return {
       success: false,
-      message: error.message || 'Erro desconhecido ao verificar status do pagamento.',
+      message: error.message || 'Erro desconhecido',
     };
   }
-};
+}
