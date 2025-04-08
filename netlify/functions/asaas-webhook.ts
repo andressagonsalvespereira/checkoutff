@@ -28,17 +28,17 @@ const handler: Handler = async (event) => {
       return { statusCode: 200, body: JSON.stringify({ message: 'Pagamento criado, aguardando confirmação.' }) };
     }
 
-    if (body.event === 'PAYMENT_CONFIRMED') {
-      if (payment.status !== 'CONFIRMED') {
-        console.log(`Pagamento com status ${payment.status} não está confirmado. Ignorando.`);
-        return { statusCode: 200, body: JSON.stringify({ message: 'Pagamento ainda não confirmado.' }) };
+    // Processar tanto PAYMENT_CONFIRMED quanto PAYMENT_RECEIVED
+    if (body.event === 'PAYMENT_CONFIRMED' || body.event === 'PAYMENT_RECEIVED') {
+      if (payment.status !== 'CONFIRMED' && payment.status !== 'RECEIVED') {
+        console.log(`Pagamento com status ${payment.status} não está confirmado ou recebido. Ignorando.`);
+        return { statusCode: 200, body: JSON.stringify({ message: 'Pagamento ainda não confirmado ou recebido.' }) };
       }
 
-      // Atualizar o status para PAID no Supabase usando payment_id
       const { data, error } = await supabase
         .from('orders')
-        .update({ payment_status: 'PAID' }) // Usar payment_status, conforme sua tabela
-        .eq('payment_id', payment.id); // Alterado de asaas_payment_id para payment_id
+        .update({ payment_status: 'PAID' })
+        .eq('payment_id', payment.id);
 
       if (error) {
         console.error('Erro ao atualizar status de pagamento:', error);
