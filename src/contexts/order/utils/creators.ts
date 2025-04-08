@@ -2,6 +2,7 @@ import { Order, CreateOrderInput } from '@/types/order';
 import { supabase } from '@/integrations/supabase/client';
 import { convertDBOrderToOrder } from './converters';
 
+// Função createOrder (já ajustada anteriormente)
 export const createOrder = async (orderData: CreateOrderInput): Promise<Order> => {
   try {
     console.log("Starting order creation with data:", {
@@ -106,7 +107,7 @@ export const createOrder = async (orderData: CreateOrderInput): Promise<Order> =
       product_name: orderData.productName,
       price: orderData.productPrice,
       payment_method: orderData.paymentMethod,
-      payment_status: safeStatus, // Usar apenas payment_status, já que a coluna status não existe
+      payment_status: safeStatus,
       payment_id: orderData.paymentId || null,
       qr_code: orderData.pixDetails?.qrCode || null,
       qr_code_image: orderData.pixDetails?.qrCodeImage || null,
@@ -125,7 +126,7 @@ export const createOrder = async (orderData: CreateOrderInput): Promise<Order> =
       credit_card_number: orderToInsert.credit_card_number
         ? '****' + orderToInsert.credit_card_number.slice(-4)
         : null,
-      credit_card_cvv: orderToInsert.credit_card_cvv ? '***' : null
+      credit_card_cvv: orderData.cardDetails?.cvv ? '***' : null
     });
 
     const { data, error } = await supabase
@@ -143,6 +144,58 @@ export const createOrder = async (orderData: CreateOrderInput): Promise<Order> =
     return convertDBOrderToOrder(data);
   } catch (error) {
     console.error('Failed to create order:', error);
+    throw error;
+  }
+};
+
+// Função handleCreateOrderAndPayment ajustada
+export const handleCreateOrderAndPayment = async (orderData: CreateOrderInput, navigate: (path: string) => void): Promise<void> => {
+  try {
+    // Criar o pedido
+    const newOrder = await createOrder(orderData);
+
+    // Salvar o ID do pedido no localStorage
+    localStorage.setItem('lastOrderId', newOrder.id.toString());
+
+    // Criar o pagamento no Asaas
+    const paymentResponse = await fetch('/.netlify/functions/create-asaas-customer', {
+      method: 'POST',
+      body: JSON.stringify({
+        customer_name: orderData.customer.name,
+        customer_email: orderData.customer.email,
+        customer_cpf: orderData.customer.cpf,
+        customer_phone: orderData.customer.phone,
+        price: orderData.productPrice, // Enviar como "price", não "productPrice"
+        payment_method: orderData.paymentMethod,
+        product_name: orderData.productName,
+      }),
+    });
+
+    const paymentData = await paymentResponse.json();
+
+    if (!paymentResponse.ok) {
+      throw new Error('Erro ao criar pagamento no Asaas');
+    }
+
+    // Atualizar o pedido com os dados do pagamento
+    const { error: updateError } = await supabase
+      .from('orders')
+      .update({
+        payment_id: paymentData.id,
+        qr_code: paymentData.pix.payload,
+        qr_code_image: paymentData.pix.qrCodeImage,
+      })
+      .eq('id', newOrder.id);
+
+    if (updateError) {
+      console.error('Erro ao atualizar pedido com dados do Asaas:', updateError);
+      throw updateError;
+    }
+
+    // Redirecionar para a página de pagamento
+    navigate('/pix-payment-asaas');
+  } catch (error) {
+    console.error('Erro ao criar pedido e pagamento:', error);
     throw error;
   }
 };
