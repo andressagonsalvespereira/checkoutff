@@ -9,11 +9,7 @@ import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import QRCode from 'qrcode.react';
-import {
-  resolveManualStatus,
-  isConfirmedStatus,
-  isRejectedStatus,
-} from '@/contexts/order/utils/resolveManualStatus';
+import { usePaymentPolling } from '@/contexts/order/hooks/usePaymentPolling';
 
 const PixPaymentAsaas: React.FC = () => {
   const { productSlug } = useParams<{ productSlug: string }>();
@@ -27,6 +23,9 @@ const PixPaymentAsaas: React.FC = () => {
   const [useFallback, setUseFallback] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
+
+  const orderId = state?.orderData?.id || localStorage.getItem('lastOrderId');
+  usePaymentPolling(orderId, state?.orderData);
 
   useEffect(() => {
     const loadProductAndPaymentData = async () => {
@@ -43,7 +42,6 @@ const PixPaymentAsaas: React.FC = () => {
         logger.log('Order data received via state:', orderData);
 
         if (!orderData || !orderData.pixDetails) {
-          const orderId = localStorage.getItem('lastOrderId');
           if (!orderId) throw new Error('ID do pedido não encontrado.');
 
           const order = await getOrderById(orderId);
@@ -81,38 +79,7 @@ const PixPaymentAsaas: React.FC = () => {
     };
 
     loadProductAndPaymentData();
-  }, [productSlug, getProductBySlug, getOrderById, settings, state, toast, navigate]);
-
-  useEffect(() => {
-    const orderId = state?.orderData?.id || localStorage.getItem('lastOrderId');
-    if (!orderId) return;
-
-    const interval = setInterval(async () => {
-      try {
-        const latestOrder = await getOrderById(orderId);
-        if (!latestOrder) return;
-
-        const status = resolveManualStatus(latestOrder.payment_status);
-        logger.log('[Polling] Status normalizado do pedido:', status);
-
-        if (isConfirmedStatus(status)) {
-          logger.log('✅ Pagamento confirmado, redirecionando...');
-          navigate('/payment-success', { state: { orderData: latestOrder } });
-          clearInterval(interval);
-        }
-
-        if (isRejectedStatus(status)) {
-          logger.warn('❌ Pagamento negado, redirecionando...');
-          navigate('/payment-failed', { state: { orderData: latestOrder } });
-          clearInterval(interval);
-        }
-      } catch (error) {
-        logger.error('[Polling] Erro ao verificar status do pedido:', error);
-      }
-    }, 5000);
-
-    return () => clearInterval(interval);
-  }, [state?.orderData?.id, getOrderById, navigate]);
+  }, [productSlug, getProductBySlug, getOrderById, settings, state, toast, navigate, orderId]);
 
   if (loading) {
     return (
