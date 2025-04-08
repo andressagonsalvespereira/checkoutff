@@ -129,7 +129,7 @@ export const useCheckoutOrder = ({
         paymentMethod: cardDetails ? 'CREDIT_CARD' : 'PIX',
         paymentStatus: finalStatus,
         paymentId,
-        asaas_payment_id: paymentId, // ✅ ESSENCIAL para integração com webhook
+        asaasPaymentId: paymentId,
         cardDetails,
         pixDetails: isPixPayment ? {
           qrCode: pixDetails?.qrCode || 'QR_CODE_NOT_AVAILABLE',
@@ -139,6 +139,10 @@ export const useCheckoutOrder = ({
         orderDate: new Date().toISOString(),
         deviceType,
         isDigitalProduct: productDetails.isDigital,
+        // 🆕 Adicionando copia_e_cola se for PIX
+        ...(isPixPayment && pixDetails?.qrCode
+          ? { copia_e_cola: pixDetails.qrCode }
+          : {}),
       });
 
       logger.log('[useCheckoutOrder] ✅ Pedido criado com ID:', newOrder.id);

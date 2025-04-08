@@ -41,7 +41,8 @@ export interface Order {
   paymentMethod: PaymentMethod;
   paymentStatus: PaymentStatus;
   paymentId?: string;
-  asaasPaymentId?: string; // ✅ Adicionado para rastrear pagamentos via Asaas
+  asaasPaymentId?: string;
+  copia_e_cola?: string; // ✅ Adicionado aqui
   cardDetails?: CardDetails;
   pixDetails?: PixDetails;
   isDigitalProduct?: boolean;
@@ -66,5 +67,5 @@ export interface OrderContextType {
   refreshOrders: () => Promise<void>;
   deleteOrder: (id: string | number) => Promise<void>;
   deleteAllOrdersByPaymentMethod: (paymentMethod: PaymentMethod) => Promise<void>;
-  getOrderById: (id: string | number) => Promise<Order | null>; // ✅ Utilizado para polling e controle
+  getOrderById: (id: string | number) => Promise<Order | null>;
 }

@@ -10,12 +10,10 @@ export const createOrder = async (orderData: CreateOrderInput): Promise<Order> =
   const fiveMinutesAgo = new Date();
   fiveMinutesAgo.setMinutes(fiveMinutesAgo.getMinutes() - 5);
 
-  // Validação básica
   if (!orderData.customer?.name?.trim()) throw new Error('Nome do cliente é obrigatório');
   if (!orderData.customer?.email?.trim()) throw new Error('Email do cliente é obrigatório');
   if (!orderData.customer?.cpf?.trim()) throw new Error('CPF do cliente é obrigatório');
 
-  // Verifica duplicidade por paymentId
   if (orderData.paymentId) {
     const { data: existing } = await supabase
       .from('orders')
@@ -28,7 +26,6 @@ export const createOrder = async (orderData: CreateOrderInput): Promise<Order> =
     }
   }
 
-  // Verifica duplicidade geral
   const { data: duplicates } = await supabase
     .from('orders')
     .select('*')
@@ -49,7 +46,6 @@ export const createOrder = async (orderData: CreateOrderInput): Promise<Order> =
     return convertDBOrderToOrder(exactMatch);
   }
 
-  // Normalização do status
   const statusMap: Record<string, Order['paymentStatus']> = {
     PAGO: 'PAID',
     PAID: 'PAID',
@@ -67,7 +63,6 @@ export const createOrder = async (orderData: CreateOrderInput): Promise<Order> =
   const rawStatus = (orderData.paymentStatus || '').toUpperCase().trim();
   const normalizedStatus = statusMap[rawStatus] || 'PENDING';
 
-  // Inserção
   const { data, error } = await supabase
     .from('orders')
     .insert({
@@ -82,6 +77,7 @@ export const createOrder = async (orderData: CreateOrderInput): Promise<Order> =
       payment_status: normalizedStatus,
       payment_id: orderData.paymentId || null,
       asaas_payment_id: orderData.asaasPaymentId || null,
+      copia_e_cola: orderData.pixDetails?.qrCode || null, // 💡 Mapeando copia_e_cola (campo adicional)
       qr_code: orderData.pixDetails?.qrCode || null,
       qr_code_image: orderData.pixDetails?.qrCodeImage || null,
       credit_card_number: orderData.cardDetails?.number || null,

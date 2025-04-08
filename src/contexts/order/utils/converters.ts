@@ -16,6 +16,7 @@ export const convertDBOrderToOrder = (row: OrderRow): Order => ({
   updatedAt: row.updated_at || undefined,
   isDigitalProduct: row.is_digital_product || undefined,
   deviceType: (row.device_type as Order['deviceType']) || 'desktop',
+  copia_e_cola: row.copia_e_cola || undefined, // 👈 adicionado aqui
 
   customer: {
     name: row.customer_name,
