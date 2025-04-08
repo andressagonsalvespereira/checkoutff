@@ -1,4 +1,3 @@
-
 import React from 'react';
 import PaymentOptions from '@/components/checkout/payment-methods/PaymentOptions';
 import PaymentError from '@/components/checkout/payment-methods/PaymentError';
@@ -23,7 +22,8 @@ interface PaymentMethodContentProps {
     paymentId: string, 
     status: 'pending' | 'confirmed',
     cardDetails?: any,
-    pixDetails?: any
+    pixDetails?: any,
+    asaasPaymentId?: string
   ) => Promise<any>;
   isProcessing: boolean;
   productDetails?: any;
@@ -46,32 +46,28 @@ const PaymentMethodContent: React.FC<PaymentMethodContentProps> = ({
   showPixPayment,
   setShowPixPayment
 }) => {
-  // Adapt callback functions for different payment components
   const cardFormCallback = async (data: PaymentResult): Promise<any> => {
     if (!createOrder) {
       logger.warn("Tentativa de criar pedido sem função createOrder disponível");
       return null;
     }
-    
-    // Gerar ID único de pagamento se não fornecido
+
     const paymentId = data.paymentId || `card_${Date.now()}`;
-    
+
     logger.log("Card form callback triggered", {
       paymentId,
       status: data.status,
       cardLast4: data.cardNumber ? data.cardNumber.slice(-4) : 'N/A',
       brand: data.brand || 'unknown'
     });
-    
-    // Verificar se este pagamento já foi processado
+
     if (processedPaymentIds.has(paymentId)) {
-      logger.warn(`PaymentMethodContent: Pagamento ${paymentId} já foi processado anteriormente`);
+      logger.warn(`Pagamento ${paymentId} já foi processado`);
       return { duplicated: true, alreadyProcessed: true, paymentId };
     }
-    
-    // Marcar como processado
+
     processedPaymentIds.add(paymentId);
-    
+
     try {
       return await createOrder(
         paymentId,
@@ -90,31 +86,28 @@ const PaymentMethodContent: React.FC<PaymentMethodContentProps> = ({
       throw error;
     }
   };
-  
+
   const pixFormCallback = async (data: PaymentResult): Promise<any> => {
     if (!createOrder) {
       logger.warn("Tentativa de criar pedido sem função createOrder disponível");
       return null;
     }
-    
-    // Gerar ID único de pagamento se não fornecido
+
     const paymentId = data.paymentId || `pix_${Date.now()}`;
-    
+
     logger.log("PIX form callback triggered", {
       paymentId,
       hasQrCode: !!data.qrCode,
       hasQrCodeImage: !!data.qrCodeImage
     });
-    
-    // Verificar se este pagamento já foi processado
+
     if (processedPaymentIds.has(paymentId)) {
-      logger.warn(`PaymentMethodContent: Pagamento ${paymentId} já foi processado anteriormente`);
+      logger.warn(`Pagamento ${paymentId} já foi processado`);
       return { duplicated: true, alreadyProcessed: true, paymentId };
     }
-    
-    // Marcar como processado
+
     processedPaymentIds.add(paymentId);
-    
+
     try {
       return await createOrder(
         paymentId,
@@ -124,7 +117,8 @@ const PaymentMethodContent: React.FC<PaymentMethodContentProps> = ({
           qrCode: data.qrCode,
           qrCodeImage: data.qrCodeImage,
           expirationDate: data.expirationDate
-        }
+        },
+        data.paymentId // asaasPaymentId
       );
     } catch (error) {
       logger.error("Erro ao criar pedido com PIX:", error);
@@ -132,7 +126,6 @@ const PaymentMethodContent: React.FC<PaymentMethodContentProps> = ({
     }
   };
 
-  // Function to handle PIX button click
   const handleShowPixPayment = (): Promise<PaymentResult> => {
     setShowPixPayment(true);
     return Promise.resolve({
@@ -143,7 +136,6 @@ const PaymentMethodContent: React.FC<PaymentMethodContentProps> = ({
     });
   };
 
-  // Check if the product is digital
   const isDigitalProduct = productDetails?.isDigital || false;
 
   return (
@@ -195,7 +187,6 @@ const PaymentMethodContent: React.FC<PaymentMethodContentProps> = ({
 
 export default PaymentMethodContent;
 
-// Função para limpar o conjunto de IDs processados (útil para testes)
 export const clearProcessedPaymentIds = () => {
   processedPaymentIds.clear();
 };
