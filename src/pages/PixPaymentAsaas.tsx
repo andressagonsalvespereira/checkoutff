@@ -1,6 +1,5 @@
-// src/pages/PixPaymentAsaas.tsx
 import React, { useEffect, useState } from 'react';
-import { useParams, useLocation } from 'react-router-dom';
+import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { useProducts } from '@/contexts/ProductContext';
 import { useAsaas } from '@/contexts/AsaasContext';
 import { useOrders } from '@/contexts/OrderContext';
@@ -15,6 +14,7 @@ import { usePaymentPolling } from '@/contexts/order/hooks/usePaymentPolling';
 const PixPaymentAsaas: React.FC = () => {
   const { productSlug } = useParams<{ productSlug: string }>();
   const { state } = useLocation();
+  const navigate = useNavigate();
   const { getProductBySlug } = useProducts();
   const { getOrderById } = useOrders();
   const { settings } = useAsaas();
@@ -25,6 +25,13 @@ const PixPaymentAsaas: React.FC = () => {
   const { toast } = useToast();
 
   const orderId = state?.orderData?.id || localStorage.getItem('lastOrderId');
+  logger.log('[PixPaymentAsaas] Order ID carregado:', orderId);
+  if (!orderId) {
+    logger.warn('[PixPaymentAsaas] Nenhum orderId encontrado! Redirecionando...');
+    navigate('/checkout');
+  }
+
+  logger.log('[PixPaymentAsaas] Chamando usePaymentPolling com orderId:', orderId);
   usePaymentPolling(orderId || undefined, true, state?.orderData);
 
   useEffect(() => {
@@ -39,11 +46,10 @@ const PixPaymentAsaas: React.FC = () => {
         logger.log('Produto encontrado:', foundProduct);
 
         let orderData = state?.orderData;
-        logger.log('Order data received via state:', orderData);
+        logger.log('Order data recebido via state:', orderData);
 
         if (!orderData || !orderData.pixDetails) {
           if (!orderId) throw new Error('ID do pedido não encontrado.');
-
           const order = await getOrderById(orderId);
           if (!order || !order.pixDetails) {
             throw new Error('Dados do pagamento PIX não encontrados no Supabase.');
@@ -78,7 +84,7 @@ const PixPaymentAsaas: React.FC = () => {
     };
 
     loadProductAndPaymentData();
-  }, [productSlug, getProductBySlug, getOrderById, settings, state, toast, orderId]);
+  }, [productSlug, getProductBySlug, getOrderById, settings, state, toast, orderId, navigate]);
 
   if (loading) {
     return (
