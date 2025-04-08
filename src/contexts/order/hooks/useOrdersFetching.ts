@@ -1,62 +1,50 @@
 import { useState, useEffect } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 import { Order } from '@/types/order';
-import { useToast } from '@/hooks/use-toast';
-import { loadOrders } from '../utils';
-import { logger } from '@/utils/logger';
+import { convertDBOrderToOrder } from '../utils/converters'; // Ajustado para o caminho correto
 
-/**
- * Hook for handling order fetching operations
- */
 export const useOrdersFetching = () => {
-  const { toast } = useToast();
   const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchOrders = async () => {
+  const refreshOrders = async () => {
     setLoading(true);
     try {
-      const loadedOrders = await loadOrders();
-      setOrders(loadedOrders);
-      setError(null);
-      setLoading(false);
+      const { data, error } = await supabase.from('orders').select('*');
+      if (error) throw error;
+      const convertedOrders = data.map(convertDBOrderToOrder);
+      setOrders(convertedOrders);
+      console.log('[useOrdersFetching] Pedidos carregados:', convertedOrders.length);
     } catch (err) {
-      logger.error('Erro ao carregar pedidos:', err);
-      setError('Falha ao carregar pedidos');
-      toast({
-        title: "Erro",
-        description: "Falha ao carregar pedidos",
-        variant: "destructive",
-      });
+      setError(err.message);
+      console.error('[useOrdersFetching] Erro ao carregar pedidos:', err);
+    } finally {
       setLoading(false);
     }
   };
 
   const getOrderById = async (id: string | number): Promise<Order | null> => {
     try {
-      const existing = orders.find((order) => order.id === Number(id));
-      if (existing) return existing;
-
-      const freshOrders = await loadOrders();
-      const found = freshOrders.find((order) => order.id === Number(id)) || null;
-      if (found) setOrders(freshOrders); // Atualiza o estado local
-      return found;
-    } catch (error) {
-      logger.error('[getOrderById] Erro ao buscar pedido por ID:', error);
+      console.log('[useOrdersFetching] Buscando pedido com ID:', id);
+      const { data, error } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('id', id)
+        .single();
+      if (error) throw error;
+      const order = convertDBOrderToOrder(data);
+      console.log('[useOrdersFetching] Pedido encontrado:', order);
+      return order;
+    } catch (err) {
+      console.error('[useOrdersFetching] Erro ao buscar pedido:', err);
       return null;
     }
   };
 
   useEffect(() => {
-    fetchOrders();
+    refreshOrders();
   }, []);
 
-  return {
-    orders,
-    setOrders,
-    loading,
-    error,
-    refreshOrders: fetchOrders,
-    getOrderById, // ✅ Agora incluso corretamente
-  };
+  return { orders, setOrders, loading, error, refreshOrders, getOrderById };
 };
