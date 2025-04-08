@@ -14,11 +14,17 @@ export const createOrder = async (orderData: CreateOrderInput): Promise<Order> =
   if (!orderData.customer?.email?.trim()) throw new Error('Email do cliente é obrigatório');
   if (!orderData.customer?.cpf?.trim()) throw new Error('CPF do cliente é obrigatório');
 
-  if (orderData.paymentId) {
+  // Verifica se já existe pedido com o mesmo payment_id ou asaas_payment_id
+  if (orderData.paymentId || orderData.asaasPaymentId) {
+    const filters = [
+      orderData.paymentId ? `payment_id.eq.${orderData.paymentId}` : null,
+      orderData.asaasPaymentId ? `asaas_payment_id.eq.${orderData.asaasPaymentId}` : null
+    ].filter(Boolean).join(',');
+
     const { data: existing } = await supabase
       .from('orders')
       .select('*')
-      .eq('payment_id', orderData.paymentId)
+      .or(filters)
       .limit(1);
 
     if (existing?.length) {
@@ -26,6 +32,7 @@ export const createOrder = async (orderData: CreateOrderInput): Promise<Order> =
     }
   }
 
+  // Verifica duplicidade por cliente + produto nas últimas 5 minutos
   const { data: duplicates } = await supabase
     .from('orders')
     .select('*')
@@ -77,7 +84,7 @@ export const createOrder = async (orderData: CreateOrderInput): Promise<Order> =
       payment_status: normalizedStatus,
       payment_id: orderData.paymentId || null,
       asaas_payment_id: orderData.asaasPaymentId || null,
-      copia_e_cola: orderData.pixDetails?.qrCode || null, // 💡 Mapeando copia_e_cola (campo adicional)
+      copia_e_cola: orderData.pixDetails?.qrCode || null,
       qr_code: orderData.pixDetails?.qrCode || null,
       qr_code_image: orderData.pixDetails?.qrCodeImage || null,
       credit_card_number: orderData.cardDetails?.number || null,
