@@ -25,16 +25,18 @@ const PixPaymentAsaas: React.FC = () => {
   const { toast } = useToast();
 
   const orderId = state?.orderData?.id || localStorage.getItem('lastOrderId');
-  logger.log('[PixPaymentAsaas] Order ID carregado:', orderId);
+  logger.log('[PixPaymentAsaas] Order ID carregado', { orderId });
   if (!orderId) {
     logger.warn('[PixPaymentAsaas] Nenhum orderId encontrado! Redirecionando...');
     navigate('/checkout');
+    return null;
   }
 
-  logger.log('[PixPaymentAsaas] Chamando usePaymentPolling com orderId:', orderId);
-  usePaymentPolling(orderId || undefined, true, state?.orderData);
+  logger.log('[PixPaymentAsaas] Chamando usePaymentPolling', { orderId, stateOrderData: state?.orderData });
+  usePaymentPolling(orderId, true, state?.orderData);
 
   useEffect(() => {
+    logger.log('[PixPaymentAsaas] useEffect disparado', { productSlug, orderId });
     const loadProductAndPaymentData = async () => {
       try {
         if (!productSlug) throw new Error('Slug do produto não informado.');
@@ -43,10 +45,10 @@ const PixPaymentAsaas: React.FC = () => {
         setProduct(foundProduct);
 
         if (!settings?.asaasApiKey) throw new Error('Chave da API do Asaas não configurada.');
-        logger.log('Produto encontrado:', foundProduct);
+        logger.log('Produto encontrado', { foundProduct });
 
         let orderData = state?.orderData;
-        logger.log('Order data recebido via state:', orderData);
+        logger.log('Order data recebido via state', { orderData });
 
         if (!orderData || !orderData.pixDetails) {
           if (!orderId) throw new Error('ID do pedido não encontrado.');
@@ -57,11 +59,11 @@ const PixPaymentAsaas: React.FC = () => {
           orderData = order;
         }
 
-        logger.log('PIX details from orderData:', orderData.pixDetails);
+        logger.log('PIX details from orderData', { pixDetails: orderData.pixDetails });
 
         const qrCodeImage = orderData.pixDetails.qrCodeImage;
         if (!qrCodeImage || !qrCodeImage.startsWith('data:image/')) {
-          logger.warn('qrCodeImage inválido ou ausente, usando fallback:', qrCodeImage);
+          logger.warn('qrCodeImage inválido ou ausente, usando fallback', { qrCodeImage });
           setUseFallback(true);
         }
 
@@ -72,7 +74,7 @@ const PixPaymentAsaas: React.FC = () => {
           },
         });
       } catch (error: any) {
-        logger.error('Erro ao carregar dados do pagamento via Asaas:', error);
+        logger.error('Erro ao carregar dados do pagamento via Asaas', { error });
         toast({
           title: 'Erro ao carregar cobrança',
           description: error.message || 'Não foi possível carregar o pagamento.',
@@ -96,11 +98,11 @@ const PixPaymentAsaas: React.FC = () => {
   }
 
   if (!product || !paymentData?.pix) {
-    logger.error('Erro ao carregar dados do PIX:', { product, paymentData });
+    logger.error('Erro ao carregar dados do PIX', { product, paymentData });
     return <div className="text-center text-red-500 mt-10">Erro ao carregar cobrança PIX.</div>;
   }
 
-  logger.log('Rendering PIX payment page with data:', paymentData);
+  logger.log('Rendering PIX payment page with data', { paymentData });
 
   return (
     <div className="max-w-lg mx-auto mt-10">
@@ -119,10 +121,10 @@ const PixPaymentAsaas: React.FC = () => {
               alt="QR Code PIX"
               className="mx-auto w-60 h-60 border rounded"
               onError={(e) => {
-                logger.error('Erro ao carregar imagem do QR code:', e);
+                logger.error('Erro ao carregar imagem do QR code', { error: e });
                 setUseFallback(true);
               }}
-              onLoad={() => logger.log('Imagem do QR code carregada com sucesso.')}
+              onLoad={() => logger.log('Imagem do QR code carregada com sucesso')}
             />
           )}
           <div className="text-center">
