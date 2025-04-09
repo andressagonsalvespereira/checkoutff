@@ -1,19 +1,24 @@
-// src/pages/PixPaymentAsaas.tsx
-
-import { useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
-import { isConfirmedStatus, isRejectedStatus, resolveManualStatus } from '@/contexts/order/utils/paymentStatus';
 import { Loader2 } from 'lucide-react';
-import { useState } from 'react';
+import {
+  isConfirmedStatus,
+  isRejectedStatus,
+  resolveManualStatus,
+} from '@/contexts/order/utils/resolveManualStatus';
+import { Order } from '@/types/database';
 
 export default function PixPaymentAsaas() {
-  const { slug } = useParams<{ slug: string }>();
+  const location = useLocation();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
+  const [order, setOrder] = useState<Order | null>(null);
+
+  const orderData = location.state?.orderData as Order | undefined;
 
   useEffect(() => {
-    if (!slug) return;
+    if (!orderData?.id) return;
 
     let interval: NodeJS.Timeout;
 
@@ -21,12 +26,13 @@ export default function PixPaymentAsaas() {
       const { data, error } = await supabase
         .from('orders')
         .select('*')
-        .eq('product_name', decodeURIComponent(slug))
-        .order('created_at', { ascending: false })
-        .limit(1)
+        .eq('id', orderData.id)
         .single();
 
-      if (error || !data) return;
+      if (error || !data) {
+        console.error('Erro ao buscar pedido:', error);
+        return;
+      }
 
       const normalizedStatus = resolveManualStatus(data.payment_status);
 
@@ -35,22 +41,24 @@ export default function PixPaymentAsaas() {
       } else if (isRejectedStatus(normalizedStatus)) {
         navigate('/payment-failed', { state: { orderData: data } });
       } else {
-        // Se ainda estiver pendente, aguarda
+        setOrder(data); // mantém dados atualizados
         setLoading(false);
       }
     };
 
-    pollOrderStatus(); // Primeira execução imediata
-    interval = setInterval(pollOrderStatus, 4000); // Poll a cada 4s
+    pollOrderStatus();
+    interval = setInterval(pollOrderStatus, 4000);
 
-    return () => clearInterval(interval); // Limpa quando sair da página
-  }, [slug, navigate]);
+    return () => clearInterval(interval);
+  }, [orderData?.id, navigate]);
 
   return (
     <div className="min-h-screen flex flex-col justify-center items-center text-center p-8">
       <Loader2 className="w-12 h-12 animate-spin text-primary mb-4" />
       <p className="text-lg font-medium">Aguardando confirmação do pagamento...</p>
-      <p className="text-muted-foreground text-sm mt-2">Assim que o pagamento for identificado, você será redirecionado automaticamente.</p>
+      <p className="text-muted-foreground text-sm mt-2">
+        Assim que o pagamento for identificado, você será redirecionado automaticamente.
+      </p>
     </div>
   );
 }

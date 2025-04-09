@@ -1,3 +1,4 @@
+// src/components/checkout/CheckoutProgressContainer.tsx
 
 import React from 'react';
 import { useCheckoutForm } from '@/hooks/useCheckoutForm';
@@ -44,12 +45,11 @@ const CheckoutProgressContainer: React.FC<CheckoutProgressContainerProps> = ({
   
   const { settings } = useAsaas();
 
-  // Quando o pedido for criado com sucesso, vamos chamar handlePayment com os dados apropriados
   const handleOrderCreated = (paymentData: any) => {
     console.log("Ordem criada com sucesso, chamando handlePayment com dados:", paymentData);
     
-    // Construir objeto com dados do cliente e do pagamento
     const paymentInfo = {
+      ...paymentData,
       customerData: {
         name: formState.fullName,
         email: formState.email,
@@ -65,11 +65,8 @@ const CheckoutProgressContainer: React.FC<CheckoutProgressContainerProps> = ({
           postalCode: formState.cep.replace(/\D/g, '')
         } : undefined
       },
-      status: paymentData.status || 'pending',
-      ...paymentData
     };
     
-    // Chamar a função handlePayment com os dados do pagamento
     handlePayment(paymentInfo);
   };
 
@@ -94,13 +91,9 @@ const CheckoutProgressContainer: React.FC<CheckoutProgressContainerProps> = ({
       postalCode: formState.cep.replace(/\D/g, '')
     } : undefined
   };
-  
-  
 
-  // Validate if the selected payment method is allowed based on settings
   React.useEffect(() => {
     if (settings) {
-      // If the current payment method is not allowed, switch to an allowed method
       if (paymentMethod === 'card' && !settings.allowCreditCard) {
         if (settings.allowPix) {
           setPaymentMethod('pix');
@@ -113,7 +106,6 @@ const CheckoutProgressContainer: React.FC<CheckoutProgressContainerProps> = ({
     }
   }, [settings, paymentMethod, setPaymentMethod]);
 
-  // Verificar se está em processamento em qualquer nível
   const combinedProcessing = isProcessing || isProcessingOrder;
 
   return (
