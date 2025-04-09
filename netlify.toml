@@ -1,6 +1,7 @@
 [build]
   command = "npm run build"  # Comando para construir o projeto
   publish = "dist"  # Pasta onde os arquivos de build serão publicados
+  functions = "netlify/functions"  # Localização das funções Netlify
 
 [functions]
   directory = "netlify/functions"  # Diretório onde as funções do Netlify estão localizadas
@@ -19,6 +20,3 @@
   to = "/.netlify/functions/asaas-webhook"  # Faz com que o endpoint do webhook seja mantido
   status = 200
   force = true  # Força o redirecionamento para garantir que funcione
-
-[build]
-  functions = "netlify/functions"  # Localização das funções Netlify
