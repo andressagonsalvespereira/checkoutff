@@ -1,5 +1,5 @@
-import { AsaasPaymentResponse } from '../../types/asaas';  // Caminho relativo
-import { supabase } from '../../integrations/supabase/client';  // Caminho relativo
+import { AsaasPaymentResponse } from '../../src/types/asaas';  // Caminho relativo
+import { supabase } from '../../src/integrations/supabase/client';  // Caminho correto baseado na localização do arquivo
 
 export const handler = async (event) => {
   const { customer, orderId } = JSON.parse(event.body);
