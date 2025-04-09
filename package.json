@@ -4,12 +4,12 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
- "dev": "vite",
-  "build": "npm run build:functions && vite build",
-  "build:dev": "npm run build:functions && vite build --mode development",
-  "build:functions": "tsc --project netlify/functions/tsconfig.functions.json",
-  "lint": "eslint .",
-  "preview": "vite preview"
+    "dev": "vite",
+    "build": "npm run build:functions && vite build",
+    "build:dev": "npm run build:functions && vite build --mode development",
+    "build:functions": "tsc --project netlify/functions/tsconfig.functions.json",
+    "lint": "eslint .",
+    "preview": "vite preview"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -71,7 +71,7 @@
   "devDependencies": {
     "@eslint/js": "^9.9.0",
     "@tailwindcss/typography": "^0.5.15",
-    "@types/node": "^22.5.5",
+    "@types/node": "^22.14.0",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react-swc": "^3.5.0",

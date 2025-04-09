@@ -1,155 +1,94 @@
-import { Handler } from '@netlify/functions';
+// netlify/functions/create-asaas-customer.ts
 
-const ASAAS_BASE_URL = process.env.ASAAS_API_URL || 'https://sandbox.asaas.com/api/v3';
-const ASAAS_API_URL_CUSTOMERS = `${ASAAS_BASE_URL}/customers`;
-const ASAAS_API_URL_PAYMENTS = `${ASAAS_BASE_URL}/payments`;
+import { Handler } from '@netlify/functions'
+import { createClient } from '@supabase/supabase-js'
+
+const supabase = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
+
+const ASAAS_API_KEY = process.env.ASAAS_API_KEY
+const ASAAS_API_URL = 'https://www.asaas.com/api/v3'
 
 const handler: Handler = async (event) => {
-  console.log('📨 Requisição recebida:', { method: event.httpMethod });
-
-  if (event.httpMethod !== 'POST') {
-    return {
-      statusCode: 405,
-      body: JSON.stringify({ error: 'Método não permitido. Use POST.' }),
-    };
-  }
-
-  if (!event.body) {
-    return {
-      statusCode: 400,
-      body: JSON.stringify({ error: 'Corpo da requisição vazio.' }),
-    };
-  }
-
-  const apiKey = process.env.ASAAS_API_KEY;
-  if (!apiKey) {
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ error: 'API key do Asaas não configurada.' }),
-    };
-  }
-
   try {
-    const {
-      customer_name: name,
-      customer_email: email,
-      customer_cpf: cpfCnpj,
-      customer_phone: phone,
-      price,
-      payment_method = 'PIX',
-      product_name = 'Assinatura Anual - CineFlick Card',
-    } = JSON.parse(event.body);
+    const body = JSON.parse(event.body || '{}')
+    const { customer, orderId } = body
 
-    if (!name || !email || !cpfCnpj || !price) {
+    if (!customer || !orderId) {
       return {
         statusCode: 400,
-        body: JSON.stringify({ error: 'Nome, email, CPF/CNPJ e preço são obrigatórios.' }),
-      };
-    }
-
-    const value = parseFloat(price);
-    if (isNaN(value)) {
-      return { statusCode: 400, body: JSON.stringify({ error: 'Preço inválido.' }) };
-    }
-
-    const cleanCpfCnpj = cpfCnpj.replace(/[^\d]/g, '');
-    if (![11, 14].includes(cleanCpfCnpj.length)) {
-      return { statusCode: 400, body: JSON.stringify({ error: 'CPF ou CNPJ inválido.' }) };
-    }
-
-    const customerPayload = {
-      name,
-      email,
-      cpfCnpj: cleanCpfCnpj,
-      mobilePhone: phone ? phone.replace(/[^\d]/g, '') : undefined,
-    };
-
-    const customerResponse = await fetch(ASAAS_API_URL_CUSTOMERS, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        access_token: apiKey,
-      },
-      body: JSON.stringify(customerPayload),
-    });
-
-    const customerData = await customerResponse.json();
-    if (!customerResponse.ok) {
-      return {
-        statusCode: customerResponse.status,
-        body: JSON.stringify({ error: 'Erro ao criar cliente no Asaas', details: customerData }),
-      };
-    }
-
-    // Cria vencimento para amanhã
-    const dueDate = new Date();
-    dueDate.setDate(dueDate.getDate() + 1);
-    const dueDateStr = dueDate.toISOString().split('T')[0];
-
-    const paymentPayload = {
-      customer: customerData.id,
-      billingType: payment_method,
-      value,
-      dueDate: dueDateStr,
-      description: product_name,
-    };
-
-    const paymentResponse = await fetch(ASAAS_API_URL_PAYMENTS, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        access_token: apiKey,
-      },
-      body: JSON.stringify(paymentPayload),
-    });
-
-    const paymentData = await paymentResponse.json();
-    if (!paymentResponse.ok) {
-      return {
-        statusCode: paymentResponse.status,
-        body: JSON.stringify({ error: 'Erro ao criar pagamento no Asaas', details: paymentData }),
-      };
-    }
-
-    // Buscar o QR Code
-    let pix = { payload: 'QR_CODE_NOT_AVAILABLE', qrCodeImage: '' };
-
-    if (paymentData.id) {
-      try {
-        const qrCodeResponse = await fetch(`${ASAAS_API_URL_PAYMENTS}/${paymentData.id}/pixQrCode`, {
-          headers: {
-            'Content-Type': 'application/json',
-            access_token: apiKey,
-          },
-        });
-
-        if (qrCodeResponse.ok) {
-          const qrCodeData = await qrCodeResponse.json();
-          pix.payload = qrCodeData.payload || pix.payload;
-          pix.qrCodeImage = qrCodeData.encodedImage || '';
-        }
-      } catch (err) {
-        console.warn('⚠️ Erro ao buscar QR Code:', err);
+        body: JSON.stringify({ error: 'Missing customer or orderId' })
       }
     }
+
+    // 1. Criar cliente no Asaas
+    const customerResponse = await fetch(`${ASAAS_API_URL}/customers`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'access_token': ASAAS_API_KEY!
+      },
+      body: JSON.stringify(customer)
+    })
+    const customerData = await customerResponse.json()
+    if (!customerResponse.ok) throw new Error(customerData.errors?.[0]?.description || 'Failed to create customer')
+
+    // 2. Criar cobrança PIX
+    const paymentResponse = await fetch(`${ASAAS_API_URL}/payments`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'access_token': ASAAS_API_KEY!
+      },
+      body: JSON.stringify({
+        customer: customerData.id,
+        billingType: 'PIX',
+        value: body.amount || 100.0,
+        dueDate: new Date().toISOString().split('T')[0],
+        description: body.description || 'Pagamento via PIX'
+      })
+    })
+    const paymentData = await paymentResponse.json()
+    if (!paymentResponse.ok) throw new Error(paymentData.errors?.[0]?.description || 'Failed to create payment')
+
+    // 3. Buscar QR Code do PIX
+    const qrResponse = await fetch(`${ASAAS_API_URL}/payments/${paymentData.id}/pixQrCode`, {
+      method: 'GET',
+      headers: {
+        'access_token': ASAAS_API_KEY!
+      }
+    })
+    const qrData = await qrResponse.json()
+
+    // 4. Salvar em asaas_payments (relacionando com orderId)
+    const { error } = await supabase.from('asaas_payments').insert({
+      order_id: orderId,
+      payment_id: paymentData.id,
+      status: paymentData.status,
+      amount: paymentData.value,
+      qr_code: qrData.payload,
+      qr_code_image: qrData.encodedImage
+    })
+
+    if (error) throw new Error(error.message)
 
     return {
       statusCode: 200,
       body: JSON.stringify({
-        ...paymentData,
-        pix,
-      }),
-    };
+        paymentId: paymentData.id,
+        status: paymentData.status,
+        qrCode: qrData.payload,
+        qrImage: qrData.encodedImage
+      })
+    }
   } catch (err: any) {
-    console.error('❌ Erro geral na função:', err.message || err);
     return {
       statusCode: 500,
-      body: JSON.stringify({
-        error: 'Erro interno ao processar o pagamento.',
-        details: err.message || err,
-      }),
-    };
+      body: JSON.stringify({ error: err.message })
+    }
   }
-};
+}
 
-export { handler };
+export { handler }
