@@ -1,22 +1,5 @@
-[build]
-  command = "npm run build"  # Comando para construir o projeto
-  publish = "dist"  # Pasta onde os arquivos de build serão publicados
-  functions = "netlify/functions"  # Localização das funções Netlify
-
-[functions]
-  directory = "netlify/functions"  # Diretório onde as funções do Netlify estão localizadas
-
-[dev]
-  targetPort = 8080  # Porta de desenvolvimento
-  envFiles = [".env"]  # Arquivos de ambiente para desenvolvimento
-
 [[redirects]]
-  from = "/*"
-  to = "/index.html"  # Redirect de todos os caminhos para o index.html (SPA)
+  from = "/.netlify/functions/*"
+  to = "/functions/:splat"
   status = 200
-
-[[redirects]]
-  from = "/.netlify/functions/asaas-webhook"
-  to = "/.netlify/functions/asaas-webhook"  # Faz com que o endpoint do webhook seja mantido
-  status = 200
-  force = true  # Força o redirecionamento para garantir que funcione
+  force = true
