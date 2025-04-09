@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Loader2 } from 'lucide-react';
+// Importando as funções de verificação de status
 import {
   isConfirmedStatus,
   isRejectedStatus,
   resolveManualStatus,
-} from '@/contexts/order/utils/resolveManualStatus';
-import { Order } from '@/types/database';
+} from '@/contexts/order/utils/resolveManualStatus';  // Certifique-se de importar primeiro as funções
+
+import { Order } from '@/types/order';  // Corrigido para o local adequado
 
 export default function PixPaymentAsaas() {
   const location = useLocation();
@@ -31,6 +33,7 @@ export default function PixPaymentAsaas() {
 
       if (error || !data) {
         console.error('Erro ao buscar pedido:', error);
+        setLoading(false);
         return;
       }
 
@@ -38,8 +41,10 @@ export default function PixPaymentAsaas() {
 
       if (isConfirmedStatus(normalizedStatus)) {
         navigate('/payment-success', { state: { orderData: data } });
+        clearInterval(interval); // Interrompe o polling quando a navegação acontecer
       } else if (isRejectedStatus(normalizedStatus)) {
         navigate('/payment-failed', { state: { orderData: data } });
+        clearInterval(interval); // Interrompe o polling quando a navegação acontecer
       } else {
         setOrder(data); // mantém dados atualizados
         setLoading(false);
