@@ -18,7 +18,7 @@ export const createOrder = async (orderData: CreateOrderInput): Promise<Order> =
   if (orderData.paymentId || orderData.asaasPaymentId) {
     const filters = [
       orderData.paymentId ? `payment_id.eq.${orderData.paymentId}` : null,
-      orderData.asaasPaymentId ? `asaas_payment_id.eq.${orderData.asaasPaymentId}` : null
+      orderData.asaasPaymentId ? `asaas_payment_id.eq.${orderData.asaasPaymentId}` : null,
     ].filter(Boolean).join(',');
 
     const { data: existing } = await supabase
@@ -104,5 +104,30 @@ export const createOrder = async (orderData: CreateOrderInput): Promise<Order> =
     throw new Error(error?.message || 'Erro ao salvar pedido');
   }
 
-  return convertDBOrderToOrder(data);
+  const order = convertDBOrderToOrder(data);
+
+  // ⚠️ Se o método for PIX e ainda não veio de cobrança anterior, cria pagamento no Asaas
+  if (
+    order.paymentMethod === 'PIX' &&
+    !orderData.asaasPaymentId
+  ) {
+    try {
+      console.log('✅ Criando cobrança PIX no Asaas para orderId:', order.id);
+
+      await fetch('/.netlify/functions/create-asaas-customer', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          customer: orderData.customer,
+          orderId: order.id,
+        }),
+      });
+    } catch (err) {
+      console.error('❌ Erro ao chamar create-asaas-customer:', err);
+    }
+  }
+
+  return order;
 };

@@ -1,5 +1,5 @@
 import { logger } from '@/utils/logger';
-import type { PaymentStatus } from '@/types/order';
+import { PaymentStatus } from '@/types/order';
 
 export const resolveManualStatus = (status: string | undefined): PaymentStatus => {
   logger.log('[resolveManualStatus] Recebido status:', status);

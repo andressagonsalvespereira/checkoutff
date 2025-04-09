@@ -1,94 +1,121 @@
 // netlify/functions/create-asaas-customer.ts
 
-import { Handler } from '@netlify/functions'
-import { createClient } from '@supabase/supabase-js'
+import { Handler } from '@netlify/functions';
+import { createClient } from '@supabase/supabase-js';
+import { v4 as uuidv4 } from 'uuid';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+  process.env.SUPABASE_SERVICE_ROLE_KEY! // Use Service Role Key para inserções seguras
+);
 
-const ASAAS_API_KEY = process.env.ASAAS_API_KEY
-const ASAAS_API_URL = 'https://www.asaas.com/api/v3'
+const ASAAS_API_KEY = process.env.ASAAS_API_KEY!;
+const ASAAS_BASE_URL = 'https://www.asaas.com/api/v3';
 
 const handler: Handler = async (event) => {
-  try {
-    const body = JSON.parse(event.body || '{}')
-    const { customer, orderId } = body
+  if (event.httpMethod !== 'POST') {
+    return { statusCode: 405, body: 'Method Not Allowed' };
+  }
 
-    if (!customer || !orderId) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ error: 'Missing customer or orderId' })
-      }
+  try {
+    const { customer, orderId } = JSON.parse(event.body || '{}');
+
+    if (!customer?.name || !customer?.email || !customer?.cpf || !orderId) {
+      return { statusCode: 400, body: 'Dados do cliente ou orderId incompletos' };
     }
 
-    // 1. Criar cliente no Asaas
-    const customerResponse = await fetch(`${ASAAS_API_URL}/customers`, {
+    // Cria cliente no Asaas
+    const customerRes = await fetch(`${ASAAS_BASE_URL}/customers`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'access_token': ASAAS_API_KEY!
-      },
-      body: JSON.stringify(customer)
-    })
-    const customerData = await customerResponse.json()
-    if (!customerResponse.ok) throw new Error(customerData.errors?.[0]?.description || 'Failed to create customer')
-
-    // 2. Criar cobrança PIX
-    const paymentResponse = await fetch(`${ASAAS_API_URL}/payments`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'access_token': ASAAS_API_KEY!
+        access_token: ASAAS_API_KEY,
       },
       body: JSON.stringify({
-        customer: customerData.id,
-        billingType: 'PIX',
-        value: body.amount || 100.0,
-        dueDate: new Date().toISOString().split('T')[0],
-        description: body.description || 'Pagamento via PIX'
-      })
-    })
-    const paymentData = await paymentResponse.json()
-    if (!paymentResponse.ok) throw new Error(paymentData.errors?.[0]?.description || 'Failed to create payment')
+        name: customer.name,
+        email: customer.email,
+        cpfCnpj: customer.cpf.replace(/\D/g, ''),
+        phone: customer.phone || '',
+      }),
+    });
 
-    // 3. Buscar QR Code do PIX
-    const qrResponse = await fetch(`${ASAAS_API_URL}/payments/${paymentData.id}/pixQrCode`, {
-      method: 'GET',
+    const customerData = await customerRes.json();
+
+    if (!customerRes.ok || !customerData.id) {
+      console.error('Erro ao criar cliente no Asaas:', customerData);
+      return { statusCode: 500, body: 'Erro ao criar cliente no Asaas' };
+    }
+
+    const asaasCustomerId = customerData.id;
+
+    // Cria cobrança PIX
+    const paymentRes = await fetch(`${ASAAS_BASE_URL}/payments`, {
+      method: 'POST',
       headers: {
-        'access_token': ASAAS_API_KEY!
-      }
-    })
-    const qrData = await qrResponse.json()
+        'Content-Type': 'application/json',
+        access_token: ASAAS_API_KEY,
+      },
+      body: JSON.stringify({
+        customer: asaasCustomerId,
+        billingType: 'PIX',
+        value: 97.00, // 💡 Você pode dinamizar isso com base no orderId se necessário
+        dueDate: new Date(Date.now() + 60 * 60 * 1000).toISOString().split('T')[0],
+        externalReference: uuidv4(), // referência única
+      }),
+    });
 
-    // 4. Salvar em asaas_payments (relacionando com orderId)
-    const { error } = await supabase.from('asaas_payments').insert({
-      order_id: orderId,
-      payment_id: paymentData.id,
-      status: paymentData.status,
-      amount: paymentData.value,
-      qr_code: qrData.payload,
-      qr_code_image: qrData.encodedImage
-    })
+    const paymentData = await paymentRes.json();
 
-    if (error) throw new Error(error.message)
+    if (!paymentRes.ok || !paymentData.id) {
+      console.error('Erro ao criar cobrança PIX:', paymentData);
+      return { statusCode: 500, body: 'Erro ao criar cobrança no Asaas' };
+    }
+
+    // Obtém dados do QR Code
+    const qrCodeRes = await fetch(`${ASAAS_BASE_URL}/payments/${paymentData.id}/pixQrCode`, {
+      headers: {
+        access_token: ASAAS_API_KEY,
+      },
+    });
+
+    const qrData = await qrCodeRes.json();
+
+    if (!qrCodeRes.ok || !qrData?.payload) {
+      console.error('Erro ao obter QR Code PIX:', qrData);
+      return { statusCode: 500, body: 'Erro ao obter QR Code PIX' };
+    }
+
+    // Salva dados no Supabase (asaas_payments)
+    const { error } = await supabase
+      .from('asaas_payments')
+      .insert({
+        order_id: orderId,
+        payment_id: paymentData.id,
+        status: paymentData.status,
+        amount: paymentData.value,
+        qr_code: qrData.payload,
+        qr_code_image: qrData?.encodedImage,
+      });
+
+    if (error) {
+      console.error('Erro ao salvar no Supabase:', error);
+      return { statusCode: 500, body: 'Erro ao salvar cobrança no Supabase' };
+    }
 
     return {
       statusCode: 200,
       body: JSON.stringify({
+        success: true,
         paymentId: paymentData.id,
-        status: paymentData.status,
+        orderId,
         qrCode: qrData.payload,
-        qrImage: qrData.encodedImage
-      })
-    }
-  } catch (err: any) {
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ error: err.message })
-    }
+        qrCodeImage: qrData.encodedImage,
+      }),
+    };
+  } catch (err) {
+    console.error('Erro geral:', err);
+    return { statusCode: 500, body: 'Erro interno do servidor' };
   }
-}
+};
 
-export { handler }
+export { handler };

@@ -12,7 +12,11 @@ import CheckoutProgressContainer from '@/components/checkout/progress/CheckoutPr
 import ProductNotFound from '@/components/checkout/quick-checkout/ProductNotFound';
 import { PaymentMethod, PaymentStatus } from '@/types/order';
 import { logger } from '@/utils/logger';
-import { resolveManualStatus } from '@/contexts/order/utils/resolveManualStatus';
+import {
+  resolveManualStatus,
+  isConfirmedStatus,
+  isRejectedStatus
+} from '@/contexts/order/utils/resolveManualStatus';
 
 const Checkout: React.FC = () => {
   const { productSlug } = useParams<{ productSlug?: string }>();
@@ -86,22 +90,18 @@ const Checkout: React.FC = () => {
         orderCreatedRef.current = true;
 
         const normalized = resolveManualStatus(paymentData.status);
-        const finalStatus =
-          normalized === 'CONFIRMED' ? 'confirmed' :
-          normalized === 'REJECTED' ? 'rejected' :
-          'pending';
 
         toast({
-          title: finalStatus === 'confirmed' ? "Pedido aprovado!" :
-                 finalStatus === 'pending' ? "Pedido pendente!" :
+          title: isConfirmedStatus(normalized) ? "Pedido aprovado!" :
+                 normalized === 'PENDING' ? "Pedido pendente!" :
                  "Pagamento recusado!",
-          description: finalStatus === 'confirmed'
+          description: isConfirmedStatus(normalized)
             ? "Seu pedido foi registrado com sucesso."
-            : finalStatus === 'pending'
+            : normalized === 'PENDING'
             ? "Seu pagamento está em análise ou aguardando ação."
             : "Seu pagamento foi recusado. Tente novamente ou use outro método.",
           duration: 5000,
-          variant: finalStatus === 'rejected' ? 'destructive' : 'default'
+          variant: isRejectedStatus(normalized) ? 'destructive' : 'default'
         });
 
         if (paymentMethod === 'pix') {
@@ -112,9 +112,9 @@ const Checkout: React.FC = () => {
           return;
         }
 
-        if (finalStatus === 'confirmed') {
+        if (isConfirmedStatus(normalized)) {
           navigate('/payment-success', { state: { orderData: paymentData } });
-        } else if (finalStatus === 'pending') {
+        } else if (normalized === 'PENDING') {
           navigate('/payment-pending', { state: { orderData: paymentData } });
         } else {
           navigate('/payment-failed', { state: { orderData: paymentData } });
@@ -141,10 +141,7 @@ const Checkout: React.FC = () => {
         paymentMethod: paymentMethodEnum,
         paymentStatus: paymentStatusEnum,
         isDigitalProduct: selectedProduct.digital,
-
-        // ✅ Campo essencial para rastreabilidade do pedido via paymentId
         paymentId: paymentData.id,
-
         cardDetails: paymentMethod === 'card' && paymentData.cardDetails ? {
           number: paymentData.cardDetails.number,
           expiryMonth: paymentData.cardDetails.expiryMonth,
