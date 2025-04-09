@@ -15,7 +15,6 @@ export type Database = {
         Row: {
           allow_credit_card: boolean;
           allow_pix: boolean;
-          amount: number | null;
           asaas_enabled: boolean;
           created_at: string | null;
           id: number;
@@ -23,7 +22,6 @@ export type Database = {
           manual_card_status: string;
           manual_payment_config: boolean;
           manual_pix_page: boolean;
-          price: number | null;
           production_api_key: string | null;
           sandbox_api_key: string | null;
           updated_at: string | null;
@@ -31,7 +29,6 @@ export type Database = {
         Insert: {
           allow_credit_card?: boolean;
           allow_pix?: boolean;
-          amount?: number | null;
           asaas_enabled?: boolean;
           created_at?: string | null;
           id?: number;
@@ -39,7 +36,6 @@ export type Database = {
           manual_card_status?: string;
           manual_payment_config?: boolean;
           manual_pix_page?: boolean;
-          price?: number | null;
           production_api_key?: string | null;
           sandbox_api_key?: string | null;
           updated_at?: string | null;
@@ -47,7 +43,6 @@ export type Database = {
         Update: {
           allow_credit_card?: boolean;
           allow_pix?: boolean;
-          amount?: number | null;
           asaas_enabled?: boolean;
           created_at?: string | null;
           id?: number;
@@ -55,7 +50,6 @@ export type Database = {
           manual_card_status?: string;
           manual_payment_config?: boolean;
           manual_pix_page?: boolean;
-          price?: number | null;
           production_api_key?: string | null;
           sandbox_api_key?: string | null;
           updated_at?: string | null;
@@ -65,29 +59,29 @@ export type Database = {
       pix_config: {
         Row: {
           id: number;
-          chave_pix: string;
-          tipo_chave: string;
+          chavepix: string;
+          tipochave: string;
           beneficiario: string;
-          copia_ecola: string;
-          mensagem_opcional: string;
+          copiaecola: string;
+          mensagemopcional: string;
           updated_at?: string | null;
         };
         Insert: {
           id?: number;
-          chave_pix: string;
-          tipo_chave: string;
+          chavepix: string;
+          tipochave: string;
           beneficiario: string;
-          copia_ecola: string;
-          mensagem_opcional: string;
+          copiaecola: string;
+          mensagemopcional: string;
           updated_at?: string | null;
         };
         Update: {
           id?: number;
-          chave_pix?: string;
-          tipo_chave?: string;
+          chavepix?: string;
+          tipochave?: string;
           beneficiario?: string;
-          copia_ecola?: string;
-          mensagem_opcional?: string;
+          copiaecola?: string;
+          mensagemopcional?: string;
           updated_at?: string | null;
         };
         Relationships: [];
@@ -144,10 +138,8 @@ export type Database = {
           banner_image_url: string | null;
           button_color: string | null;
           button_text: string | null;
-          button_text_color: string | null;
           created_at: string | null;
           header_message: string | null;
-          heading_color: string | null;
           id: number;
           show_banner: boolean | null;
           updated_at: string | null;
@@ -156,10 +148,8 @@ export type Database = {
           banner_image_url?: string | null;
           button_color?: string | null;
           button_text?: string | null;
-          button_text_color?: string | null;
           created_at?: string | null;
           header_message?: string | null;
-          heading_color?: string | null;
           id?: never;
           show_banner?: boolean | null;
           updated_at?: string | null;
@@ -168,10 +158,8 @@ export type Database = {
           banner_image_url?: string | null;
           button_color?: string | null;
           button_text?: string | null;
-          button_text_color?: string | null;
           created_at?: string | null;
           header_message?: string | null;
-          heading_color?: string | null;
           id?: never;
           show_banner?: boolean | null;
           updated_at?: string | null;
@@ -422,7 +410,7 @@ export type Database = {
         Relationships: [];
       };
     };
-    Views?: never; // Não há views no banco, então removemos isso
+    Views?: never;
   };
 };
 
@@ -493,10 +481,10 @@ export type TablesUpdate<
 
 export type PixConfig = {
   id: number;
-  chave_pix: string;
-  tipo_chave: string;
+  chavepix: string;
+  tipochave: string;
   beneficiario: string;
-  copia_ecola: string;
-  mensagem_opcional: string;
+  copiaecola: string;
+  mensagemopcional: string;
   updated_at?: string;
 };
