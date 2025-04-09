@@ -3,6 +3,18 @@ import { CreateOrderInput, Order } from '@/types/order';
 import { convertDBOrderToOrder } from './converters';
 
 export const createOrder = async (orderData: CreateOrderInput): Promise<Order> => {
+  // Verifica se o Asaas está habilitado para PIX
+  const { data: asaasConfig, error: asaasConfigError } = await supabase
+    .from('asaas_config')
+    .select('asaas_enabled')
+    .limit(1)
+    .single();
+
+  if (asaasConfigError || !asaasConfig?.asaas_enabled) {
+    throw new Error('Asaas API não está habilitada');
+  }
+
+  // Verifica se o pedido já foi criado (baseado no paymentId ou asaasPaymentId)
   const productIdNumber = typeof orderData.productId === 'string'
     ? parseInt(orderData.productId, 10)
     : Number(orderData.productId);
@@ -14,7 +26,6 @@ export const createOrder = async (orderData: CreateOrderInput): Promise<Order> =
   if (!orderData.customer?.email?.trim()) throw new Error('Email do cliente é obrigatório');
   if (!orderData.customer?.cpf?.trim()) throw new Error('CPF do cliente é obrigatório');
 
-  // Verifica se já existe pedido com o mesmo payment_id ou asaas_payment_id
   if (orderData.paymentId || orderData.asaasPaymentId) {
     const filters = [
       orderData.paymentId ? `payment_id.eq.${orderData.paymentId}` : null,
@@ -32,44 +43,6 @@ export const createOrder = async (orderData: CreateOrderInput): Promise<Order> =
     }
   }
 
-  // Verifica duplicidade por cliente + produto nas últimas 5 minutos
-  const { data: duplicates } = await supabase
-    .from('orders')
-    .select('*')
-    .eq('customer_email', orderData.customer.email)
-    .eq('product_id', productIdNumber)
-    .eq('product_name', orderData.productName)
-    .eq('payment_method', orderData.paymentMethod)
-    .gte('created_at', fiveMinutesAgo.toISOString());
-
-  const exactMatch = duplicates?.find(
-    (order) =>
-      order.price === orderData.productPrice &&
-      order.customer_name === orderData.customer.name &&
-      order.customer_cpf === orderData.customer.cpf
-  );
-
-  if (exactMatch) {
-    return convertDBOrderToOrder(exactMatch);
-  }
-
-  const statusMap: Record<string, Order['paymentStatus']> = {
-    PAGO: 'PAID',
-    PAID: 'PAID',
-    CONFIRMED: 'PAID',
-    PENDING: 'PENDING',
-    AGUARDANDO: 'PENDING',
-    CANCELADO: 'DENIED',
-    RECUSADO: 'DENIED',
-    REJECTED: 'DENIED',
-    NEGADO: 'DENIED',
-    DENIED: 'DENIED',
-    DECLINED: 'DENIED',
-  };
-
-  const rawStatus = (orderData.paymentStatus || '').toUpperCase().trim();
-  const normalizedStatus = statusMap[rawStatus] || 'PENDING';
-
   const { data, error } = await supabase
     .from('orders')
     .insert({
@@ -81,7 +54,7 @@ export const createOrder = async (orderData: CreateOrderInput): Promise<Order> =
       product_name: orderData.productName,
       price: orderData.productPrice,
       payment_method: orderData.paymentMethod,
-      payment_status: normalizedStatus,
+      payment_status: 'PENDING',
       payment_id: orderData.paymentId || null,
       asaas_payment_id: orderData.asaasPaymentId || null,
       copia_e_cola: orderData.pixDetails?.qrCode || null,
@@ -106,26 +79,34 @@ export const createOrder = async (orderData: CreateOrderInput): Promise<Order> =
 
   const order = convertDBOrderToOrder(data);
 
-  // ⚠️ Se o método for PIX e ainda não veio de cobrança anterior, cria pagamento no Asaas
+  // Se o método for PIX, cria pagamento no Asaas e associa o asaas_payment_id
   if (
     order.paymentMethod === 'PIX' &&
     !orderData.asaasPaymentId
   ) {
     try {
-      console.log('✅ Criando cobrança PIX no Asaas para orderId:', order.id);
-
-      await fetch('/.netlify/functions/create-asaas-customer', {
+      const asaasResponse = await fetch('/.netlify/functions/create-asaas-customer', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           customer: orderData.customer,
           orderId: order.id,
         }),
       });
+
+      const asaasData = await asaasResponse.json();
+
+      if (asaasData.id) {
+        await supabase
+          .from('orders')
+          .update({ asaas_payment_id: asaasData.id })
+          .eq('id', order.id);
+
+        console.log('Pedido criado no Asaas com sucesso:', asaasData.id);
+      }
     } catch (err) {
-      console.error('❌ Erro ao chamar create-asaas-customer:', err);
+      console.error('Erro ao chamar create-asaas-customer:', err);
+      throw new Error('Erro ao integrar com o Asaas');
     }
   }
 

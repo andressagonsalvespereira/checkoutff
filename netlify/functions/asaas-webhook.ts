@@ -1,71 +1,21 @@
-// netlify/functions/asaas-webhook.ts
+import { supabase } from '@/supabase/client';  // Utiliza o alias '@' para importar o client
 
-import { Handler } from '@netlify/functions'
-import { createClient } from '@supabase/supabase-js'
+export const asaasWebhookHandler = async (req, res) => {
+  const { payment_id, status } = req.body;
 
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
-
-const handler: Handler = async (event) => {
   try {
-    if (event.httpMethod !== 'POST') {
-      return {
-        statusCode: 405,
-        body: JSON.stringify({ error: 'Method Not Allowed' })
-      }
-    }
-
-    const body = JSON.parse(event.body || '{}')
-
-    const paymentId = body.payment?.id
-    const status = body.payment?.status
-
-    if (!paymentId || !status) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ error: 'Missing payment ID or status' })
-      }
-    }
-
-    // Busca o order_id na tabela asaas_payments
-    const { data: paymentRecord, error: fetchError } = await supabase
-      .from('asaas_payments')
-      .select('order_id')
-      .eq('payment_id', paymentId)
-      .single()
-
-    if (fetchError || !paymentRecord) {
-      return {
-        statusCode: 404,
-        body: JSON.stringify({ error: 'Payment not found' })
-      }
-    }
-
-    // Atualiza o status do pedido na tabela orders
-    const { error: updateError } = await supabase
+    const { error } = await supabase
       .from('orders')
       .update({ payment_status: status })
-      .eq('id', paymentRecord.order_id)
+      .eq('asaas_payment_id', payment_id);
 
-    if (updateError) {
-      return {
-        statusCode: 500,
-        body: JSON.stringify({ error: updateError.message })
-      }
+    if (error) {
+      res.status(500).json({ message: 'Erro ao atualizar status' });
+      return;
     }
 
-    return {
-      statusCode: 200,
-      body: JSON.stringify({ success: true })
-    }
-  } catch (err: any) {
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ error: err.message })
-    }
+    res.status(200).json({ message: 'Status atualizado com sucesso' });
+  } catch (err) {
+    res.status(500).json({ message: 'Erro ao processar webhook', error: err });
   }
-}
-
-export { handler }
+};
