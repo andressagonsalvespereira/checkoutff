@@ -1,137 +1,102 @@
 import { Handler } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
-import fetch from 'node-fetch';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-const ASAAS_API_KEY = process.env.ASAAS_API_KEY!;
-const ASAAS_BASE_URL = 'https://www.asaas.com/api/v3';
-
 const handler: Handler = async (event) => {
   try {
+    console.log('🔁 Requisição recebida');
+
     if (event.httpMethod !== 'POST') {
       return {
         statusCode: 405,
-        body: JSON.stringify({ error: 'Method Not Allowed' }),
+        body: JSON.stringify({ error: 'Método não permitido' }),
       };
     }
 
-    const body = JSON.parse(event.body || '{}');
-    const { orderId, customer, product } = body;
+    if (!event.body) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ error: 'Corpo da requisição ausente' }),
+      };
+    }
 
-    if (!orderId || !customer || !product) {
+    let parsed;
+    try {
+      parsed = JSON.parse(event.body);
+    } catch (error) {
+      console.error('❌ Erro ao fazer parse do body:', error);
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ error: 'JSON malformado no body' }),
+      };
+    }
+
+    const { orderId, customer, product } = parsed;
+
+    console.log('📦 Dados recebidos:', { orderId, customer, product });
+
+    if (
+      !orderId ||
+      !customer?.name ||
+      !customer?.email ||
+      !customer?.cpfCnpj ||
+      !customer?.phone ||
+      !product?.name ||
+      !product?.price
+    ) {
+      console.warn('⚠️ Dados incompletos:', { orderId, customer, product });
       return {
         statusCode: 400,
         body: JSON.stringify({ error: 'Dados do cliente ou orderId incompletos' }),
       };
     }
 
-    console.log('📦 Dados recebidos:', { orderId, customer, product });
+    console.log('💳 Simulando criação de cobrança no Asaas...');
 
-    // Criar cliente no Asaas
-    const customerRes = await fetch(`${ASAAS_BASE_URL}/customers`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        access_token: ASAAS_API_KEY,
-      },
-      body: JSON.stringify({
-        name: customer.name,
-        email: customer.email,
-        cpfCnpj: customer.cpfCnpj,
-        phone: customer.phone,
-      }),
+    const fakePixQrCode = {
+      payload: '00020126330014br.gov.bcb.pix0114+551199999999520400005303986540497.505802BR5921João da Silva6009SAO PAULO61080540900062070503***6304B14F',
+      encodedImage: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...',
+    };
+
+    const { error: dbError } = await supabase.from('asaas_payments').insert({
+      order_id: orderId,
+      payment_id: `asaas-${Date.now()}`,
+      status: 'PENDING',
+      amount: product.price,
+      qr_code: fakePixQrCode.payload,
+      qr_code_image: fakePixQrCode.encodedImage,
     });
 
-    const customerData: any = await customerRes.json();
-    console.log('✅ Cliente criado:', customerData);
-
-    if (!customerData.id) {
+    if (dbError) {
+      console.error('❌ Erro ao salvar no Supabase:', dbError);
       return {
         statusCode: 500,
-        body: JSON.stringify({ error: 'Erro ao criar cliente no Asaas', detalhes: customerData }),
+        body: JSON.stringify({ error: 'Erro ao salvar pagamento no Supabase' }),
       };
     }
 
-    // Criar pagamento PIX
-    const paymentRes = await fetch(`${ASAAS_BASE_URL}/payments`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        access_token: ASAAS_API_KEY,
-      },
-      body: JSON.stringify({
-        customer: customerData.id,
-        billingType: 'PIX',
-        value: product.price,
-        description: product.name,
-        dueDate: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-        externalReference: orderId,
-      }),
-    });
-
-    const paymentData: any = await paymentRes.json();
-    console.log('✅ Pagamento criado:', paymentData);
-
-    if (!paymentData.id) {
-      return {
-        statusCode: 500,
-        body: JSON.stringify({ error: 'Erro ao criar pagamento no Asaas', detalhes: paymentData }),
-      };
-    }
-
-    // Buscar QR Code
-    const qrRes = await fetch(`${ASAAS_BASE_URL}/payments/${paymentData.id}/pixQrCode`, {
-      headers: { access_token: ASAAS_API_KEY },
-    });
-
-    const qrData: any = await qrRes.json();
-    console.log('✅ QR Code gerado:', qrData);
-
-    if (!qrData.payload || !qrData.encodedImage) {
-      return {
-        statusCode: 500,
-        body: JSON.stringify({ error: 'Erro ao obter QR Code do Asaas', detalhes: qrData }),
-      };
-    }
-
-    // Inserir no Supabase
-    const { error: insertError } = await supabase.from('asaas_payments').insert([
-      {
-        order_id: orderId,
-        payment_id: paymentData.id,
-        status: paymentData.status,
-        amount: paymentData.value,
-        qr_code: qrData.payload,
-        qr_code_image: qrData.encodedImage,
-      },
-    ]);
-
-    if (insertError) {
-      console.error('❌ Erro Supabase:', insertError);
-      return {
-        statusCode: 500,
-        body: JSON.stringify({ error: 'Erro ao salvar no Supabase', detalhes: insertError.message }),
-      };
-    }
+    console.log('✅ Pagamento registrado com sucesso no Supabase!');
 
     return {
       statusCode: 200,
       body: JSON.stringify({
-        message: 'Cobrança criada com sucesso',
-        paymentId: paymentData.id,
-        payload: qrData.payload,
-        encodedImage: qrData.encodedImage,
+        success: true,
+        qrCode: fakePixQrCode.payload,
+        image: fakePixQrCode.encodedImage,
       }),
     };
-  } catch (error: any) {
-    console.error('❌ Erro geral:', error);
+  } catch (e: any) {
+    console.error('🔥 Erro inesperado:', e);
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: 'Erro inesperado no servidor', detalhes: error.message || error }),
+      body: JSON.stringify({
+        error: 'Erro inesperado no servidor',
+        detalhes: e.message,
+      }),
     };
   }
 };
