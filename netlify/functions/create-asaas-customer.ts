@@ -1,56 +1,48 @@
-import { Handler } from "@netlify/functions";
-import { createClient } from "@supabase/supabase-js";
-import fetch from "node-fetch";
+import { Handler } from '@netlify/functions';
+import { createClient } from '@supabase/supabase-js';
 
-// Variáveis de ambiente (configure no painel da Netlify)
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+const ASAAS_BASE_URL = process.env.ASAAS_API_URL || 'https://sandbox.asaas.com/api/v3';
+const SUPABASE_URL = process.env.SUPABASE_URL!;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-const ASAAS_API_KEY = process.env.ASAAS_API_KEY!;
-const ASAAS_API_URL = "https://www.asaas.com/api/v3";
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-export const handler: Handler = async (event) => {
+const handler: Handler = async (event) => {
+  console.log('📨 Requisição recebida:', { method: event.httpMethod });
+
+  if (event.httpMethod !== 'POST') {
+    return {
+      statusCode: 405,
+      body: JSON.stringify({ error: 'Método não permitido. Use POST.' }),
+    };
+  }
+
+  if (!event.body) {
+    return {
+      statusCode: 400,
+      body: JSON.stringify({ error: 'Corpo da requisição vazio.' }),
+    };
+  }
+
   try {
-    if (!event.body) {
-      console.error("Corpo da requisição ausente");
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ error: "Corpo da requisição ausente" }),
-      };
-    }
-
     const data = JSON.parse(event.body);
+    console.log('🧾 Dados recebidos:', data);
+
     const { orderId, customer, product } = data;
 
-    console.log("Recebido:", { orderId, customer, product });
-
-    if (
-      !orderId ||
-      !customer?.name ||
-      !customer?.email ||
-      !customer?.cpfCnpj ||
-      !customer?.phone ||
-      !product?.name ||
-      !product?.price
-    ) {
-      console.error("Dados do cliente ou orderId incompletos", data);
+    if (!orderId || !customer?.name || !customer?.email || !customer?.cpfCnpj || !customer?.phone || !product?.name || !product?.price) {
+      console.error('❌ Dados incompletos:', { orderId, customer, product });
       return {
         statusCode: 400,
-        body: JSON.stringify({
-          error: "Dados do cliente ou orderId incompletos",
-          detalhes: { orderId, customer, product },
-        }),
+        body: JSON.stringify({ error: 'Dados do cliente ou orderId incompletos' }),
       };
     }
 
-    // Criação do cliente Asaas
-    const customerResponse = await fetch(`${ASAAS_API_URL}/customers`, {
-      method: "POST",
+    const customerResponse = await fetch(`${ASAAS_BASE_URL}/customers`, {
+      method: 'POST',
       headers: {
-        "Content-Type": "application/json",
-        access_token: ASAAS_API_KEY,
+        'Content-Type': 'application/json',
+        'access_token': process.env.ASAAS_API_KEY!,
       },
       body: JSON.stringify({
         name: customer.name,
@@ -61,119 +53,83 @@ export const handler: Handler = async (event) => {
     });
 
     const customerData = await customerResponse.json();
+    console.log('👤 Cliente criado:', customerData);
 
-    if (!customerResponse.ok) {
-      console.error("Erro ao criar cliente no Asaas:", customerData);
+    if (!customerResponse.ok || !customerData.id) {
       return {
-        statusCode: 500,
-        body: JSON.stringify({
-          error: "Erro ao criar cliente no Asaas",
-          detalhes: customerData,
-        }),
+        statusCode: 400,
+        body: JSON.stringify({ error: 'Erro ao criar cliente no Asaas', detalhes: customerData }),
       };
     }
 
-    console.log("Cliente criado no Asaas:", customerData);
-
-    // Criação da cobrança
-    const paymentResponse = await fetch(`${ASAAS_API_URL}/payments`, {
-      method: "POST",
+    const paymentResponse = await fetch(`${ASAAS_BASE_URL}/payments`, {
+      method: 'POST',
       headers: {
-        "Content-Type": "application/json",
-        access_token: ASAAS_API_KEY,
+        'Content-Type': 'application/json',
+        'access_token': process.env.ASAAS_API_KEY!,
       },
       body: JSON.stringify({
         customer: customerData.id,
-        billingType: "PIX",
+        billingType: 'PIX',
         value: product.price,
         description: product.name,
-        dueDate: new Date().toISOString().split("T")[0], // hoje
+        externalReference: orderId,
+        dueDate: new Date(Date.now() + 30 * 60 * 1000).toISOString().split('T')[0],
       }),
     });
 
-    const payment = await paymentResponse.json();
+    const paymentData = await paymentResponse.json();
+    console.log('💸 Pagamento criado:', paymentData);
 
-    if (!paymentResponse.ok) {
-      console.error("Erro ao criar cobrança PIX:", payment);
+    if (!paymentResponse.ok || !paymentData?.id) {
       return {
-        statusCode: 500,
-        body: JSON.stringify({
-          error: "Erro ao criar cobrança no Asaas",
-          detalhes: payment,
-        }),
+        statusCode: 400,
+        body: JSON.stringify({ error: 'Erro ao criar pagamento no Asaas', detalhes: paymentData }),
       };
     }
 
-    console.log("Cobrança criada:", payment);
+    const qrCodeResponse = await fetch(`${ASAAS_BASE_URL}/payments/${paymentData.id}/pixQrCode`, {
+      headers: {
+        'access_token': process.env.ASAAS_API_KEY!,
+      },
+    });
 
-    // Gerar o QR Code do pagamento
-    const qrCodeResponse = await fetch(
-      `${ASAAS_API_URL}/payments/${payment.id}/pixQrCode`,
-      {
-        method: "GET",
-        headers: {
-          access_token: ASAAS_API_KEY,
-        },
-      }
-    );
+    const qrCodeData = await qrCodeResponse.json();
+    console.log('🔳 QR Code PIX:', qrCodeData);
 
-    const qrCode = await qrCodeResponse.json();
+    const { error } = await supabase.from('asaas_payments').insert({
+      order_id: orderId,
+      payment_id: paymentData.id,
+      status: paymentData.status,
+      amount: paymentData.value,
+      qr_code: qrCodeData.payload,
+      qr_code_image: qrCodeData.encodedImage,
+    });
 
-    if (!qrCodeResponse.ok) {
-      console.error("Erro ao gerar QR Code PIX:", qrCode);
+    if (error) {
+      console.error('❌ Erro ao salvar no Supabase:', error);
       return {
         statusCode: 500,
-        body: JSON.stringify({
-          error: "Erro ao gerar QR Code PIX",
-          detalhes: qrCode,
-        }),
+        body: JSON.stringify({ error: 'Erro ao salvar pagamento no Supabase' }),
       };
     }
-
-    console.log("QR Code gerado:", qrCode);
-
-    // Salvar no Supabase
-    const { error: insertError } = await supabase
-      .from("asaas_payments")
-      .insert({
-        order_id: orderId,
-        payment_id: payment.id,
-        status: payment.status,
-        amount: payment.value,
-        qr_code: qrCode.payload,
-        qr_code_image: qrCode.encodedImage,
-      });
-
-    if (insertError) {
-      console.error("Erro ao salvar no Supabase:", insertError);
-      return {
-        statusCode: 500,
-        body: JSON.stringify({
-          error: "Erro ao salvar pagamento no Supabase",
-          detalhes: insertError.message,
-        }),
-      };
-    }
-
-    console.log("Pagamento salvo no Supabase com sucesso!");
 
     return {
       statusCode: 200,
       body: JSON.stringify({
-        success: true,
-        paymentId: payment.id,
-        qrCode: qrCode.payload,
-        qrCodeImage: qrCode.encodedImage,
+        message: 'Cliente e pagamento criados com sucesso',
+        paymentId: paymentData.id,
+        qrCode: qrCodeData.payload,
+        qrCodeImage: qrCodeData.encodedImage,
       }),
     };
-  } catch (err: any) {
-    console.error("Erro inesperado no servidor:", err);
+  } catch (e: any) {
+    console.error('❌ Erro inesperado:', e);
     return {
       statusCode: 500,
-      body: JSON.stringify({
-        error: "Erro inesperado no servidor",
-        detalhes: err.message,
-      }),
+      body: JSON.stringify({ error: 'Erro inesperado no servidor', detalhes: e.message }),
     };
   }
 };
+
+export { handler };
